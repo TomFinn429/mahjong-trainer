@@ -103,7 +103,7 @@ ok(`和牌判定一致（${winN} 组）`, winOk);
    3. 性质验证：单调性 / 下界
    ============================================================ */
 console.log('[3] 性质：加一张牌不会变差；向听 k 时必有牌能降到 k-1');
-let monoOk = true, stepOk = true, nonNegOk = true;
+let monoOk = true, stepOk = true, nonNegOk = true, deadTenpai = 0;
 for (let i = 0; i < 600; i++) {
   const hand = randHand(13, i % 2 ? 2 : 3);
   const c = new Array(27).fill(0); for (const x of hand) c[x]++;
@@ -118,16 +118,19 @@ for (let i = 0; i < 600; i++) {
   }
   if (!monoOk) break;
 
-  // 存在一张牌使向听 -1
-  let found = base === 0 ? false : null;
+  // 存在一张牌使向听 -1；0 向听允许「空听」：4 面子 + 第 4 张浮牌，所需牌已全在手里
   let best = 99;
   for (let k = 0; k < 27; k++) {
     if (c[k] >= 4) continue;
     const d = c.slice(); d[k]++;
     best = Math.min(best, C.shanten(d));
   }
-  if (best !== base - 1) { stepOk = false; console.log('   递进性失败', hand.map(x => C.tileCN(x)).join(' '), 'base=', base, 'best=', best); break; }
+  if (best !== base - 1) {
+    if (base === 0 && best === 0) { deadTenpai++; }
+    else { stepOk = false; console.log('   递进性失败', hand.map(x => C.tileCN(x)).join(' '), 'base=', base, 'best=', best); break; }
+  }
 }
+if (deadTenpai) console.log(`   0 向听空听（形式听牌、无有效牌）：${deadTenpai} 组，属已知边界`);
 ok('单调性', monoOk);
 ok('递进性（能一降到 base-1）', stepOk);
 ok('13 张向听非负', nonNegOk);
