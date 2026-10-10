@@ -2,7 +2,7 @@
   "name": "mahjong-trainer",
   "version": "1.0.0",
   "private": true,
-  "description": "单文件、离线、无依赖的川麻·血战到底牌效率训练器（定缺 / 何切 / 听牌 / 番型 / 牌河牌效）",
+  "description": "单文件、离线、无依赖的川麻牌效率训练器（定缺 / 何切 / 听牌 / 番型 / 牌河牌效）",
   "license": "MIT",
   "author": "TangFan <tangfan_xh@163.com>",
   "engines": {
