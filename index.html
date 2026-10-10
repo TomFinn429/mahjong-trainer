@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>川麻·血战到底牌效率训练器</title>
+<title>川麻牌效率训练器</title>
 <style>
   :root{
     --bg:#f6f7f9; --fg:#1f2430; --mut:#6b7280; --line:#e3e6eb;
@@ -113,8 +113,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1 id="ttl">川麻·血战到底牌效率训练器</h1>
-  <div class="sub" id="stl">川麻血战到底 · 单文件离线 · 键盘可操作 &nbsp;|&nbsp; 目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）</div>
+  <h1 id="ttl">川麻牌效率训练器</h1>
+  <div class="sub" id="stl">川麻牌效率 · 单文件离线 · 键盘可操作 &nbsp;|&nbsp; 目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）</div>
 
   <div class="card">
     <div class="bar">
@@ -205,11 +205,12 @@
 
   <div class="card">
     <details open>
-      <summary>血战到底牌效率核心原则（务必先读一遍）</summary>
+      <summary>川麻牌效率核心原则（务必先读一遍）</summary>
       <div class="bd">
         <ul>
-          <li><b>血战到底：胡牌者退出，其余继续打。</b>一直到只剩一家（或荒庄），一局可能多次结算。
-              先胡的人先把分锁进口袋、也不再承担后续风险，所以听牌早 1 巡的价值通常大于番数 +1 番。</li>
+          <li><b>早听早胡。</b>多数牌局前 7~9 巡就有人胡了，听牌早 1 巡的价值通常大于番数 +1 番。
+              （若你的牌桌是「胡者退出、其余继续」的血战规则，先胡还能先锁分、不再承担后续风险；
+              本训练器只练单副手牌，不区分具体结束规则。）</li>
           <li><b>不能吃牌 → 顺子只能靠自己摸。</b>这是川麻与日麻/国标最大的差别：
               两面搭子无法靠吃牌补张；而<b>对子可以靠别人打出来刻子（碰）</b>。
               所以在川麻里，<b>对子/刻子的实际速度被抬高</b>，手牌对子多时果断走碰碰胡，不要死磕顺子。</li>
@@ -217,12 +218,12 @@
               张数越少清缺越快；张数相同时，比较剩下两门的结构质量。</li>
           <li><b>有效牌 = 向听 −1 的牌。</b>选打时先看向听，同向听比有效牌张数，同张数比好形（两面 &gt; 嵌张 &gt; 边张 &gt; 对子）。</li>
           <li><b>缺一门是硬约束。</b>缺门花色永远是死牌，既不能留、不能碰、不能杠，摸到立刻打；计算有效牌时要排除该花色。</li>
-          <li><b>防守看时机。</b>血战里在你胡牌退出之前，点炮/被自摸都可能不止一次，代价比「一炮结束」的推倒胡更高；
+          <li><b>防守看时机。</b>点炮/被自摸的代价通常明显高于多做 1 番的收益；
               所以<b>中后盘（约第 8 巡后）自己还没听牌时，弃和保命的价值明显上升</b>。</li>
           <li><b>荒庄前最后四张能胡必胡。</b>不要为了做大牌放过终局附近的胡牌机会。</li>
         </ul>
         <p class="mut" style="margin-top:8px">
-          规则差异提示：不同牌桌的血战到底在「番数倍率、自摸加番、是否计杠、是否定缺」上会有出入，
+          规则差异提示：不同牌桌在「番数倍率、自摸加番、是否计杠、是否定缺」上会有出入，
           请以你常去的牌桌约定为准，训练器里的开关可按需调整。
         </p>
       </div>
@@ -679,7 +680,7 @@ function shapeTags(counts) {
 }
 
 /* ============================================================
-   和牌判定 + 番型识别 + 计分（川麻·血战到底）
+   和牌判定 + 番型识别 + 计分（川麻）
    ============================================================ */
 
 /* 把 counts 拆成 n 个面子。mode: 'any' 任意 | 'triplet' 全刻 | 'yao' 带幺 */
@@ -1723,7 +1724,7 @@ function showCutResult(q, mine, ok, tied) {
   html += `<div class="sec"><div class="t"><span class="n">${ok ? 5 : 6}</span>关键提示</div>`
     + `<ul style="margin:0;padding-left:20px">${hints.map(h => `<li>${h}</li>`).join('')}</ul>`
     + (tags.length ? `<div class="hint" style="margin-top:8px">牌型方向：${tags.map(t => `<span class="chip">${t}</span>`).join('')}</div>` : '')
-    + `<div class="hint" style="margin-top:8px">读表顺序：① 向听最小 → ② 有效牌最多 → ③ 好形优先（两面&gt;嵌张&gt;边张&gt;对子） → ④ 才比番型。血战到底里先听先胡通常比番数大更重要。</div>`
+    + `<div class="hint" style="margin-top:8px">读表顺序：① 向听最小 → ② 有效牌最多 → ③ 好形优先（两面&gt;嵌张&gt;边张&gt;对子） → ④ 才比番型。先听先胡通常比番数大更重要。</div>`
     + `</div>`;
 
   $('#detail').innerHTML = html;
@@ -1778,7 +1779,7 @@ function onPickTen(v) {
   $('#detail').innerHTML =
     `<div class="res" style="margin-top:6px">听牌：${u.list.map(k => `<span class="chip eff">${cols(k)}</span>`).join('')}</div>` +
     `<div class="hint" style="margin-top:6px">共 <b>${u.list.length}</b> 种、<b>${u.total}</b> 张（已扣除手上持有的张数）。
-      血战到底里「听张数 × 剩余张数」比「听什么番」更值钱：胡一次就结算一次。</div>`;
+      「听张数 × 剩余张数」比「听什么番」更值钱：胡一次就结算一次。</div>`;
   clearBars();
   $('#resultCard').style.display = '';
   $('#resultCard').classList.add('flash');
@@ -1839,10 +1840,10 @@ $('#tRiver').onclick = e => {
 $('#tAka').onclick = e => {
   state.aka = !state.aka;
   e.target.classList.toggle('on', state.aka);
-  $('#ttl').textContent = state.aka ? 'Sequence Drill' : '川麻·血战到底牌效率训练器';
+  $('#ttl').textContent = state.aka ? 'Sequence Drill' : '川麻牌效率训练器';
   $('#stl').textContent = state.aka
     ? 'offline single-file drill'
-    : '川麻血战到底 · 单文件离线 · 键盘可操作  |  目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）';
+    : '川麻牌效率 · 单文件离线 · 键盘可操作  |  目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）';
   renderWrongBook();
   newQuestion();
 };
