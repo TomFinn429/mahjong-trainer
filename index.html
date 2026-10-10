@@ -1,0 +1,1878 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>川麻·血战到底牌效率训练器</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#1f2430; --mut:#6b7280; --line:#e3e6eb;
+    --ok:#2f855a; --okbg:#e6f6ec; --bad:#c53030; --badbg:#fdeaea;
+    --acc:#2b6cb0; --accbg:#eaf2fb; --warn:#b7791f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);
+       font:14px/1.6 "Microsoft YaHei","PingFang SC",system-ui,-apple-system,Segoe UI,sans-serif;}
+  .wrap{max-width:940px;margin:0 auto;padding:16px 18px 48px}
+  h1{font-size:17px;margin:0 0 2px;font-weight:700;letter-spacing:.3px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .bar+.bar{margin-top:8px}
+  .lbl{color:var(--mut);font-size:12px;margin-right:2px}
+  button{font:inherit;font-size:13px;padding:5px 11px;border:1px solid var(--line);
+         background:#fff;border-radius:7px;cursor:pointer;color:var(--fg)}
+  button:hover{border-color:#c3c9d4;background:#fafbfc}
+  button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);font-weight:600}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  button.primary:hover{background:#245a94}
+  button:disabled{opacity:.45;cursor:default}
+  .hand{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 6px;min-height:66px}
+  .grp{display:flex;gap:4px}
+  .tile{position:relative;width:46px;height:62px;border:1px solid #d3d8e0;border-radius:7px;
+        background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        cursor:pointer;user-select:none;transition:transform .06s,box-shadow .1s;box-shadow:0 1px 2px rgba(20,30,50,.06)}
+  .tile:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(20,30,50,.12)}
+  .tile .n{font-size:20px;font-weight:700;line-height:1.05}
+  .tile .s{font-size:10px;color:var(--mut);line-height:1}
+  .tile.w .n{color:#1a365d}.tile.t .n{color:#22543d}.tile.d .n{color:#7b341e}
+  .tile .kbd{position:absolute;top:2px;right:4px;font-size:9px;color:#b6bcc7;font-weight:400}
+  .tile.sel{outline:2px solid var(--acc);outline-offset:1px}
+  .tile.ok{background:var(--okbg);border-color:var(--ok)}
+  .tile.bad{background:var(--badbg);border-color:var(--bad)}
+  .tile.dim{opacity:.42}
+  .tile.dead{opacity:.3;filter:grayscale(1)}
+  .hint{color:var(--mut);font-size:12px}
+  .res{font-size:13px}
+  .big{font-size:15px;font-weight:700}
+  .ok{color:var(--ok)}.bad{color:var(--bad)}.mut{color:var(--mut)}.warn{color:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:11.5px}
+  tr.top td{background:#f7fbf8}
+  tr.pick td{background:#fdf7f7}
+  .chip{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11.5px;
+        border:1px solid var(--line);background:#fafbfc;margin:1px 3px 1px 0}
+  .chip.eff{border-color:#bfe3cd;background:var(--okbg);color:#22543d}
+  .stats{display:flex;gap:22px;flex-wrap:wrap;font-size:12.5px}
+  .stats b{font-size:16px}
+  kbd{background:#eef1f5;border:1px solid #d9dee6;border-bottom-width:2px;border-radius:4px;
+      padding:0 5px;font-size:11px;font-family:ui-monospace,Consolas,monospace}
+  details{margin-top:10px}
+  summary{cursor:pointer;font-size:13px;color:var(--acc);font-weight:600;outline:none}
+  details .bd{font-size:12.5px;color:#374151;padding:8px 2px 0}
+  details ul{margin:6px 0 0;padding-left:20px}
+  details li{margin:3px 0}
+  .flash{animation:fl .5s}
+  @keyframes fl{0%{background:#fff8d9}100%{background:transparent}}
+
+  /* 拆块面板 */
+  .blk{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
+  .blk .hd{font-size:12px;color:var(--mut);margin-bottom:6px}
+  .blkrow{display:flex;gap:8px;align-items:flex-start;margin:4px 0}
+  .blkrow .k{flex:0 0 42px;font-size:11.5px;color:var(--mut);padding-top:2px;text-align:right}
+  .blkrow .v{flex:1}
+  .blkrow .v .none{color:#c3c9d4;font-size:12px}
+  .bchip{display:inline-block;padding:1px 7px;border-radius:5px;font-size:12.5px;
+         border:1px solid var(--line);background:#fafbfc;margin:1px 4px 1px 0;font-weight:600}
+  .bchip.meld{border-color:#a9cbe8;background:#eaf2fb;color:#1a365d}
+  .bchip.taatsu{border-color:#bfe3cd;background:#e6f6ec;color:#22543d}
+  .bchip.pair{border-color:#e8d3a9;background:#fdf6e3;color:#744210}
+  .bchip.float{border-color:#e3e6eb;background:#f7f8fa;color:#8a93a3;font-weight:400}
+  .fml{margin-top:8px;padding:7px 10px;background:#f7f9fc;border:1px solid #e4eaf2;
+       border-radius:7px;font-size:13px;font-family:ui-monospace,Consolas,monospace}
+  .sec{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .sec .t{font-size:13px;font-weight:700;margin-bottom:6px}
+  .sec .t .n{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;
+             background:var(--acc);color:#fff;border-radius:50%;font-size:11px;margin-right:6px}
+  .warnbox{margin-top:8px;padding:8px 11px;background:#fffaf0;border:1px solid #f0dfc0;
+           border-radius:7px;font-size:12.5px;color:#7a5a1e}
+
+  /* 牌河 */
+  .river{margin-top:6px;padding:8px 10px;background:#f7f8fa;border:1px dashed #dde2ea;border-radius:8px}
+  .river .rl{font-size:11.5px;color:var(--mut);margin-bottom:5px}
+  .river .rt{display:inline-block;padding:1px 6px;border-radius:5px;font-size:12px;
+             border:1px solid #dde2ea;background:#fff;margin:1px 3px 1px 0;color:#5a6270}
+  .river .rt.hot{border-color:#f0c0c0;background:#fdf0f0;color:#9b2c2c;font-weight:700}
+
+  /* 番数设置 */
+  .fanGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:6px 14px}
+  .fanGrid label{display:flex;align-items:center;gap:6px;font-size:12.5px}
+  .fanGrid label span{flex:1;color:#374151}
+  .fanGrid input{width:52px;padding:3px 6px;border:1px solid #d9dee6;border-radius:6px;
+                 font:inherit;font-size:12.5px;text-align:center}
+
+  /* 错题本 */
+  .wbItem{display:flex;align-items:center;gap:10px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .wbItem .h{flex:1;font-family:ui-monospace,Consolas,monospace;letter-spacing:.5px}
+  .wbItem .t{color:var(--mut);font-size:11px;white-space:nowrap}
+  .wbItem button{padding:2px 8px;font-size:12px}
+  code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="ttl">川麻·血战到底牌效率训练器</h1>
+  <div class="sub" id="stl">川麻血战到底 · 单文件离线 · 键盘可操作 &nbsp;|&nbsp; 目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）</div>
+
+  <div class="card">
+    <div class="bar">
+      <span class="lbl">训练模式</span>
+      <button data-mode="void">① 定缺决策</button>
+      <button data-mode="cut" class="on">② 何切（选打）</button>
+      <button data-mode="ten">③ 听牌点数</button>
+      <button data-mode="fan">④ 番型速算</button>
+      <button data-mode="def">⑤ 牌河牌效（带牌河）</button>
+    </div>
+    <div class="bar">
+      <span class="lbl">难度</span>
+      <button data-diff="1">入门</button>
+      <button data-diff="2" class="on">进阶</button>
+      <button data-diff="3">高手</button>
+      <span class="lbl" style="margin-left:12px">规则</span>
+      <button id="tVoid" class="on">必须缺一门</button>
+      <button id="tRiver">带牌河</button>
+      <button id="tAka">低调显示</button>
+      <span style="flex:1"></span>
+      <button id="btnBlocks">拆块检查</button>
+      <button id="btnNew" class="primary">新题 (空格)</button>
+    </div>
+    <div class="bar">
+      <span class="lbl">已副露</span>
+      <button data-open="0" class="on">0 组</button>
+      <button data-open="1">1 组</button>
+      <button data-open="2">2 组</button>
+      <button data-open="3">3 组</button>
+      <span class="hint" style="margin-left:10px">副露后手牌张数 = 13 − 3×组数，向听公式变为 2×(4−组数) − …</span>
+    </div>
+  </div>
+
+  <div class="card" id="stage">
+    <div class="bar"><span class="lbl" id="taskHint">从 14 张里选出最优的一张打出</span>
+      <span style="flex:1"></span>
+      <span class="hint" id="timer">0.0s</span></div>
+    <div id="meldRow" style="display:none"></div>
+    <div class="hand" id="hand"></div>
+    <div id="riverBox" style="display:none"></div>
+    <div class="hint" id="tip"></div>
+    <div id="blockPanel" style="display:none"></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <div class="res" id="verdict"></div>
+    <div id="detail"></div>
+  </div>
+
+  <div class="card">
+    <details id="fanCfgBox">
+      <summary>番数设置（按你牌桌的约定改，自动保存在本机）</summary>
+      <div class="bd" id="fanCfgBody"></div>
+    </details>
+    <details id="wbBox">
+      <summary>错题本（<span id="wbCount">0</span> 题）</summary>
+      <div class="bd" id="wbBody"></div>
+    </details>
+    <details id="loadBox">
+      <summary>手动载入牌型（文本输入）</summary>
+      <div class="bd">
+        <div class="bar">
+          <input id="loadInput" type="text" placeholder="w1234t5678s123 或 123456789m111m22m"
+                 style="flex:1;min-width:260px;padding:6px 10px;border:1px solid #d9dee6;border-radius:7px;font:inherit">
+          <button id="btnLoad" class="primary">载入</button>
+          <button id="btnLoadClear">取消载入</button>
+        </div>
+        <div class="hint" style="margin-top:6px">
+          格式：<code>w</code>=万 <code>t</code>/<code>p</code>=筒 <code>s</code>=条。
+          13 张 → 出「听牌点数」题；14 张 → 出「何切」题。
+        </div>
+        <div id="loadMsg" class="hint" style="margin-top:6px"></div>
+      </div>
+    </details>
+    <details id="errBox">
+      <summary>错误模式统计</summary>
+      <div class="bd" id="errBody"></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="stats" id="stats"></div>
+    <div class="bar" style="margin-top:10px">
+      <button id="btnReset">清空统计</button>
+      <span class="hint">统计保存在本机浏览器（localStorage），不上传。</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <details open>
+      <summary>血战到底牌效率核心原则（务必先读一遍）</summary>
+      <div class="bd">
+        <ul>
+          <li><b>血战到底：胡牌者退出，其余继续打。</b>一直到只剩一家（或荒庄），一局可能多次结算。
+              先胡的人先把分锁进口袋、也不再承担后续风险，所以听牌早 1 巡的价值通常大于番数 +1 番。</li>
+          <li><b>不能吃牌 → 顺子只能靠自己摸。</b>这是川麻与日麻/国标最大的差别：
+              两面搭子无法靠吃牌补张；而<b>对子可以靠别人打出来刻子（碰）</b>。
+              所以在川麻里，<b>对子/刻子的实际速度被抬高</b>，手牌对子多时果断走碰碰胡，不要死磕顺子。</li>
+          <li><b>定缺是第一决策且不可逆。</b>选择顺序 = 缺门张数 → 剩余两门向听 → 有效牌张数 → 搭子好形。
+              张数越少清缺越快；张数相同时，比较剩下两门的结构质量。</li>
+          <li><b>有效牌 = 向听 −1 的牌。</b>选打时先看向听，同向听比有效牌张数，同张数比好形（两面 &gt; 嵌张 &gt; 边张 &gt; 对子）。</li>
+          <li><b>缺一门是硬约束。</b>缺门花色永远是死牌，既不能留、不能碰、不能杠，摸到立刻打；计算有效牌时要排除该花色。</li>
+          <li><b>防守看时机。</b>血战里在你胡牌退出之前，点炮/被自摸都可能不止一次，代价比「一炮结束」的推倒胡更高；
+              所以<b>中后盘（约第 8 巡后）自己还没听牌时，弃和保命的价值明显上升</b>。</li>
+          <li><b>荒庄前最后四张能胡必胡。</b>不要为了做大牌放过终局附近的胡牌机会。</li>
+        </ul>
+        <p class="mut" style="margin-top:8px">
+          规则差异提示：不同牌桌的血战到底在「番数倍率、自摸加番、是否计杠、是否定缺」上会有出入，
+          请以你常去的牌桌约定为准，训练器里的开关可按需调整。
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>怎么用这套训练（每天 10 分钟就够）</summary>
+      <div class="bd">
+        <ul>
+          <li><b>0–3 分钟：何切</b> —— 追求「快而准」。每题控制在 8 秒内作答，不要纠结，
+              答错立刻看复盘表，在脑子里说出「为什么打这张」。</li>
+          <li><b>3–6 分钟：定缺决策</b> —— 只在想不清的时候用，培养第一感。</li>
+          <li><b>6–8 分钟：听牌点数</b> —— 练「数有效牌」的敏感度。高手与新手最大的差距就在这里。</li>
+          <li><b>8–10 分钟：实体复盘</b> —— 打一把真实牌局（手机 App 或线下），
+              只在结束后挑出 2–3 个当时犹豫过的决策点，写下「我当时想什么 / 现在觉得该怎样」。</li>
+          <li><b>关键纪律：只复盘关键决策，不复盘整局。</b>全盘复盘是低效的，会淹没真正的错误模式。</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script id="mj-core">
+// __CORE_START__
+/* ============================================================
+   核心算法：27 种牌 0..26
+   0-8 = 万1-9 | 9-17 = 条1-9 | 18-26 = 筒1-9
+   ============================================================ */
+const SUIT_CN = ['万', '条', '筒'];
+const SUIT_EN = ['m', 's', 'p'];
+const suitOf = k => (k / 9) | 0;
+const rankOf = k => (k % 9) + 1;
+const tileCN = k => rankOf(k) + SUIT_CN[suitOf(k)];
+const tileEN = k => rankOf(k) + SUIT_EN[suitOf(k)];
+
+const _stdCache = new Map();
+
+/* 标准型向听数：need 个面子 + 1 雀头（need = 4 − 副露数）
+   公式 shanten = 2×need − 2×面子 − min(搭子, need−面子) − 雀头
+   返回 -1 表示已和牌，0 表示听牌 */
+function shantenStd(counts, need) {
+  if (need === undefined) need = 4;
+  const key = need + '|' + counts.join('');
+  const hit = _stdCache.get(key);
+  if (hit !== undefined) return hit;
+
+  let best = 2 * need;
+  const t = counts.slice();
+  let rem = 0;
+  for (let i = 0; i < 27; i++) rem += t[i];
+
+  function dfs(i, m, ta, pair, rem) {
+    // 乐观下界：剩余牌全变成面子，且总有雀头。若仍不如已知最优则剪掉
+    const mF = Math.min(need, m + ((rem / 3) | 0));
+    const opti = 2 * need - 2 * mF - Math.min(ta + ((rem / 2) | 0), need - mF) - 1;
+    if (opti >= best) return;
+
+    while (i < 27 && t[i] === 0) i++;
+    if (i === 27) {
+      const u = Math.min(ta, need - m);
+      const sh = 2 * need - 2 * m - u - (pair ? 1 : 0);
+      if (sh < best) best = sh;
+      return;
+    }
+    const r = i % 9;
+    if (m < need) {
+      if (t[i] >= 3) {                       // 刻子
+        t[i] -= 3; dfs(i, m + 1, ta, pair, rem - 3); t[i] += 3;
+      }
+      if (r <= 6 && t[i + 1] > 0 && t[i + 2] > 0) {   // 顺子
+        t[i]--; t[i + 1]--; t[i + 2]--;
+        dfs(i, m + 1, ta, pair, rem - 3);
+        t[i]++; t[i + 1]++; t[i + 2]++;
+      }
+    }
+    if (t[i] >= 2) {
+      if (!pair) { t[i] -= 2; dfs(i, m, ta, true, rem - 2); t[i] += 2; }  // 作雀头
+      t[i] -= 2; dfs(i, m, ta + 1, pair, rem - 2); t[i] += 2;             // 作对子搭子
+    }
+    if (r <= 7 && t[i + 1] > 0) {          // 两面/边张搭子
+      t[i]--; t[i + 1]--; dfs(i, m, ta + 1, pair, rem - 2); t[i]++; t[i + 1]++;
+    }
+    if (r <= 6 && t[i + 2] > 0) {          // 嵌张搭子
+      t[i]--; t[i + 2]--; dfs(i, m, ta + 1, pair, rem - 2); t[i]++; t[i + 2]++;
+    }
+    t[i]--; dfs(i, m, ta, pair, rem - 1); t[i]++;   // 弃置
+  }
+  dfs(0, 0, 0, false, rem);
+
+  _stdCache.set(key, best);
+  return best;
+}
+
+/* 七对型向听数（川麻：4 张同牌算两对，即龙七对）
+   13/14 张时：shanten = 6 - 总对数。牌数不足 13 时不做七对评估 */
+function shanten7(counts) {
+  let n = 0, pairs = 0;
+  for (let i = 0; i < 27; i++) { n += counts[i]; pairs += (counts[i] / 2) | 0; }
+  if (n < 13) return 99;
+  return 6 - Math.min(pairs, 7);
+}
+
+function shanten(counts, openN) {
+  if (openN === undefined) openN = 0;
+  const need = 4 - openN;
+  if (need < 0) return 99;
+  let s = shantenStd(counts, need);
+  if (openN === 0) s = Math.min(s, shanten7(counts));
+  return s;
+}
+
+function ukeire(counts, keepSuits, openN, visible) {
+  if (openN === undefined) openN = 0;
+  const base = shanten(counts, openN);
+  const list = [];
+  let total = 0;
+  for (let k = 0; k < 27; k++) {
+    if (keepSuits && !keepSuits[suitOf(k)]) continue;
+    const seen = counts[k] + (visible ? visible[k] : 0);
+    if (seen >= 4) continue;
+    const c = counts.slice();
+    c[k]++;
+    if (shanten(c, openN) < base) { list.push(k); total += 4 - seen; }
+  }
+  return { base, list, total };
+}
+
+/* ---------- 拆块：把牌拆成 面子 / 搭子 / 将 / 孤张 ----------
+   目标：2×面子 + 搭子 + 将 最大（即向听最小）；平手时孤张最少
+   约束：面子 + 搭子 ≤ 4；同一张牌只能用一次 */
+function decompose(counts, openN) {
+  if (openN === undefined) openN = 0;
+  const need = 4 - openN;
+  const total = counts.reduce((a, b) => a + b, 0);
+  const cur = counts.slice();
+  const melds = [], taatsu = [];
+  let pair = null, best = null;
+
+  function evaluate() {
+    const m = melds.length;
+    const t = Math.min(taatsu.length, Math.max(0, need - m));
+    const p = pair ? 1 : 0;
+    const shanten = 2 * need - 2 * m - t - p;
+    const used = new Array(27).fill(0);
+    melds.forEach(x => x.forEach(k => used[k]++));
+    taatsu.slice(0, t).forEach(x => x.forEach(k => used[k]++));
+    if (pair) pair.forEach(k => used[k]++);
+    const floats = [];
+    for (let i = 0; i < 27; i++) for (let j = 0; j < counts[i] - used[i]; j++) floats.push(i);
+
+    if (!best || shanten < best.shanten ||
+        (shanten === best.shanten && m > best.m) ||
+        (shanten === best.shanten && m === best.m && floats.length < best.floats.length)) {
+      best = {
+        shanten, m, t, p,
+        melds: melds.map(x => x.slice()),
+        taatsu: taatsu.slice(0, t).map(x => x.slice()),
+        pair: pair ? pair.slice() : null,
+        floats
+      };
+    }
+  }
+
+  function dfs(i) {
+    while (i < 27 && cur[i] === 0) i++;
+    if (i === 27) { evaluate(); return; }
+    const r = i % 9;
+    if (melds.length < need) {
+      if (cur[i] >= 3) { cur[i] -= 3; melds.push([i, i, i]); dfs(i); melds.pop(); cur[i] += 3; }
+      if (r <= 6 && cur[i + 1] > 0 && cur[i + 2] > 0) {
+        cur[i]--; cur[i + 1]--; cur[i + 2]--;
+        melds.push([i, i + 1, i + 2]); dfs(i); melds.pop();
+        cur[i]++; cur[i + 1]++; cur[i + 2]++;
+      }
+    }
+    if (melds.length + taatsu.length < need || (need === 0 && !pair)) {
+      if (cur[i] >= 2) {
+        if (!pair) { cur[i] -= 2; pair = [i, i]; dfs(i); pair = null; cur[i] += 2; }
+        cur[i] -= 2; taatsu.push([i, i]); dfs(i); taatsu.pop(); cur[i] += 2;
+      }
+      if (r <= 7 && cur[i + 1] > 0) {
+        cur[i]--; cur[i + 1]--; taatsu.push([i, i + 1]); dfs(i); taatsu.pop(); cur[i]++; cur[i + 1]++;
+      }
+      if (r <= 6 && cur[i + 2] > 0) {
+        cur[i]--; cur[i + 2]--; taatsu.push([i, i + 2]); dfs(i); taatsu.pop(); cur[i]++; cur[i + 2]++;
+      }
+    }
+    cur[i]--; dfs(i); cur[i]++;
+  }
+  dfs(0);
+
+  // 七对更近时改走七对视角（仅门清）
+  const s7 = openN === 0 ? shanten7(counts) : 99;
+  if (openN === 0 && total >= 13 && s7 < best.shanten) {
+    const pairs = [], used = new Array(27).fill(0);
+    for (let i = 0; i < 27; i++) for (let k = 0; k < ((counts[i] / 2) | 0); k++) { pairs.push([i, i]); used[i] += 2; }
+    const floats = [];
+    for (let i = 0; i < 27; i++) for (let k = 0; k < counts[i] - used[i]; k++) floats.push(i);
+    return { shanten: s7, seven: true, pairs, floats, m: 0, t: 0, p: 0 };
+  }
+  return best;
+}
+
+/* 一张孤张的「改良路线」：能和它配成搭子/对子的牌 */
+function floatPotential(f, counts) {
+  const s = suitOf(f), out = [];
+  const add = (c, label) => {
+    if (c < 0 || c > 26 || suitOf(c) !== s) return;
+    const rem = 4 - counts[c];
+    if (rem <= 0) return;
+    out.push({ tile: c, rem, label });
+  };
+  add(f, '成对');
+  add(f - 1, '搭子'); add(f + 1, '搭子');
+  add(f - 2, '嵌张'); add(f + 2, '嵌张');
+  return out;
+}
+
+/* 块的可读名字，如 678万 / 333筒 */
+function blockName(arr) {
+  const a = arr.slice().sort((x, y) => x - y);
+  return a.map(k => (k % 9) + 1).join('') + SUIT_CN[suitOf(a[0])];
+}
+
+function toCounts(tiles) {
+  const c = new Array(27).fill(0);
+  for (const t of tiles) c[t]++;
+  return c;
+}
+
+/* 手牌分组（按花色），返回 [[tile,...],[...],...] */
+function groupSuits(tiles) {
+  const g = [[], [], []];
+  for (const t of tiles) g[suitOf(t)].push(t);
+  for (const a of g) a.sort((x, y) => x - y);
+  return g;
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* 从指定花色里发 n 张“像真的一样”的牌 */
+function deal(n, suitIdxs) {
+  const pool = [];
+  for (let k = 0; k < 27; k++) {
+    if (suitIdxs.indexOf(suitOf(k)) >= 0) for (let i = 0; i < 4; i++) pool.push(k);
+  }
+  shuffle(pool);
+  return pool.slice(0, n).sort((a, b) => a - b);
+}
+
+/* ---------- 出题 ---------- */
+
+// ② 何切：按缺一门约束发牌（手牌张数 = 14 − 3×副露数）
+function genCut(diff, needVoid, withRiver, openN) {
+  openN = openN || 0;
+  const size = 14 - 3 * openN;
+  if (size < 2) return null;
+  const suits = needVoid ? pick2() : [0, 1, 2];
+  const keep = [false, false, false];
+  for (const s of suits) keep[s] = true;
+
+  for (let attempt = 0; attempt < 320; attempt++) {
+    const hand = deal(size, suits);
+    if (shanten(toCounts(hand), openN) > 4) continue;
+    const river = withRiver ? genRiver(hand, 12 + ((Math.random() * 10) | 0), suits) : null;
+    const { options, best } = analyzeCut(hand, keep, openN, river);
+    if (!best) continue;
+    if (best.shanten < 0) continue;
+
+    // 难度门槛
+    if (diff === 1 && (best.shanten < 1 || best.shanten > 3)) continue;
+    if (diff === 2 && (best.shanten > 2)) continue;
+    if (diff === 3 && best.shanten > 2) continue;
+
+    const minU = diff === 1 ? 6 : diff === 2 ? 4 : 2;
+    if (best.ukeire < minU) continue;
+
+    // 与同向听的次优解拉开差距，避免出“都对”的糊题
+    const sameSh = options.filter(o => o.shanten === best.shanten);
+    const sorted = sameSh.slice().sort((a, b) => b.ukeire - a.ukeire);
+    const gap = sorted.length > 1 ? sorted[0].ukeire - sorted[1].ukeire : 99;
+    const need = diff === 1 ? 3 : diff === 2 ? 1 : 0;
+    if (gap < need) continue;
+
+    return { hand, options, best, keep, river };
+  }
+  return null;
+}
+
+/* 定缺评分：多目标排序（越靠前权重越高）
+   ① 清缺速度：缺门在手张数（少者优，因为要一张张打掉）
+   ② 剩余牌效：剩下两门的向听数（低者优）
+   ③ 有效牌数量：剩下两门能降向听的牌（多者优，已扣手上）
+   ④ 搭子质量：拆块后的两面/对子/嵌张/边张（好者优） */
+function voidEval(hand) {
+  const rows = [0, 1, 2].map(s => {
+    const rest = new Array(27).fill(0);
+    const keep = [false, false, false];
+    for (let i = 0; i < 3; i++) keep[i] = (i !== s);
+    let k = 0;
+    for (const t of hand) { if (suitOf(t) === s) k++; else rest[t]++; }
+    const sh = Math.min(shantenStd(rest, 4), shanten7(rest));
+    const u = ukeire(rest, keep, 0, null);
+    const d = decompose(rest, 0);
+    let shape;
+    if (d.seven) {
+      shape = d.pairs.length;                              // 七对路线：每对算 1 分
+    } else {
+      shape = d.pair ? 1 : 0;
+      d.taatsu.forEach(tt => {
+        if (tt[0] === tt[1]) shape += 2;                       // 对子（川麻可碰）
+        else if (tt[1] - tt[0] === 1) shape += (tt[0] % 9 === 0 || tt[1] % 9 === 8) ? 1 : 2;  // 边张 1 / 两面 2
+        else shape += 1;                                        // 嵌张
+      });
+    }
+    return { suit: s, k, sh, uke: u.total, shape };
+  });
+  rows.sort((a, b) => a.k - b.k || a.sh - b.sh || b.uke - a.uke || b.shape - a.shape);
+  const b = rows[0];
+  rows.forEach(r => { r.best = (r.k === b.k && r.sh === b.sh && r.uke === b.uke && r.shape === b.shape); });
+  return rows;
+}
+
+// ① 定缺：13 张三门。难度 = 最优方案靠哪一项胜出
+// 入门(1) 比张数；进阶(2) 张数相同、比向听；高手(3) 张数/向听都相同、比有效牌与好形
+function genVoid(diff) {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const hand = deal(13, [0, 1, 2]);
+    const rows = voidEval(hand);
+    const a = rows[0], b = rows[1];
+    const tier = a.k !== b.k ? 1
+      : a.sh !== b.sh ? 2
+      : (a.uke !== b.uke || a.shape !== b.shape) ? 3 : 0;
+    if (tier !== diff) continue;
+    if (a.k === 0) continue;      // 一门都没牌，太送分
+    return { hand, rows };
+  }
+  return null;
+}
+
+// ③ 听牌点数：直接构造听牌型（3 面子 + 雀头 + 搭子，或 4 面子 + 单张）
+function genTen(diff, needVoid, tenWaits, openN) {
+  openN = openN || 0;
+  const need = 4 - openN;
+  if (need < 1) return null;
+  const size = 13 - 3 * openN;
+  const suits = needVoid ? pick2() : [0, 1, 2];
+  let want = diff === 1 ? [1, 5] : diff === 2 ? [2, 9] : [3, 9];
+  if (tenWaits === 1) want = [1, 1];
+  else if (tenWaits === 2) want = [2, 2];
+  else if (tenWaits === 3) want = [3, 9];
+  const relaxAllowed = !(tenWaits === 1 || tenWaits === 2 || tenWaits === 3);
+
+  for (let round = 0; round < 3; round++) {
+    const pad = relaxAllowed ? round : 0;
+    for (let attempt = 0; attempt < 260; attempt++) {
+      const c = new Array(27).fill(0);
+      const add = (arr) => {
+        const tmp = c.slice();
+        for (const k of arr) { if (tmp[k] >= 4) return false; tmp[k]++; }
+        for (let i = 0; i < 27; i++) c[i] = tmp[i];
+        return true;
+      };
+      const rnd = () => {
+        const s = suits[(Math.random() * suits.length) | 0];
+        return s * 9 + ((Math.random() * 9) | 0);
+      };
+
+      let bad = false;
+      const nMeld = Math.random() < 0.35 ? need : need - 1;
+      for (let i = 0; i < nMeld && !bad; i++) {
+        let done = false;
+        for (let tryN = 0; tryN < 40 && !done; tryN++) {
+          const k = rnd();
+          if (Math.random() < 0.45) { if (add([k, k, k])) done = true; }
+          else if (k % 9 <= 6) { if (add([k, k + 1, k + 2])) done = true; }
+        }
+        if (!done) bad = true;
+      }
+      if (bad) continue;
+
+      if (nMeld === need - 1) {
+        let done = false;
+        for (let tryN = 0; tryN < 40 && !done; tryN++) { const k = rnd(); if (add([k, k])) done = true; }
+        if (!done) continue;
+        let done2 = false;
+        for (let tryN = 0; tryN < 80 && !done2; tryN++) {
+          const k = rnd();
+          const gap = 1 + ((Math.random() * 2) | 0);
+          if (k % 9 + gap <= 8 && add([k, k + gap])) done2 = true;
+        }
+        if (!done2) continue;
+      } else {
+        let done = false;
+        for (let tryN = 0; tryN < 40 && !done; tryN++) { const k = rnd(); if (add([k])) done = true; }
+        if (!done) continue;
+      }
+
+      const hand = [];
+      for (let i = 0; i < 27; i++) for (let j = 0; j < c[i]; j++) hand.push(i);
+      if (hand.length !== size) continue;
+
+      const keep = [false, false, false];
+      for (const s of suits) keep[s] = true;
+      const u = ukeire(c, keep, openN);
+      if (u.base !== 0) continue;
+
+      const lo = want[0] - pad, hi = want[1] + pad;
+      if (u.list.length < Math.max(1, lo) || u.list.length > hi) continue;
+      return { hand, u, keep };
+    }
+  }
+  return null;
+}
+
+function pick2() {
+  const p = shuffle([0, 1, 2]);
+  return [p[0], p[1]];
+}
+
+/* 对 14 张手牌枚举所有可打的牌，返回每种打法的结果 */
+function analyzeCut(hand, keepSuits, openN, visible) {
+  if (openN === undefined) openN = 0;
+  const counts = toCounts(hand);
+  const options = [];
+  for (let k = 0; k < 27; k++) {
+    if (counts[k] === 0) continue;
+    const c = counts.slice();
+    c[k]--;
+    const u = ukeire(c, keepSuits, openN, visible);
+    options.push({ tile: k, shanten: u.base, ukeire: u.total, eff: u.list });
+  }
+  options.sort((a, b) => a.shanten - b.shanten || b.ukeire - a.ukeire || a.tile - b.tile);
+  const best = options.length ? { shanten: options[0].shanten, ukeire: options[0].ukeire } : null;
+  return { options, best };
+}
+
+/* 番型提示（用于训练时的附加认知） */
+function shapeTags(counts) {
+  const tags = [];
+  let kinds = 0, pairs = 0, total = 0;
+  for (let i = 0; i < 27; i++) { if (counts[i]) kinds++; total += counts[i]; }
+  for (let i = 0; i < 27; i++) pairs += (counts[i] / 2) | 0;
+  const suitsUsed = [0, 1, 2].filter(s => counts.slice(s * 9, s * 9 + 9).some(x => x > 0)).length;
+  if (suitsUsed === 1) tags.push('清一色（×2）');
+  if (pairs >= 5) tags.push('七对方向');
+  if (kinds <= 7 && total >= 13) tags.push('对对胡方向');
+  return tags;
+}
+
+/* ============================================================
+   和牌判定 + 番型识别 + 计分（川麻·血战到底）
+   ============================================================ */
+
+/* 把 counts 拆成 n 个面子。mode: 'any' 任意 | 'triplet' 全刻 | 'yao' 带幺 */
+function tryMelds(c, n, mode) {
+  let i = 0; while (i < 27 && c[i] === 0) i++;
+  if (n === 0) return i >= 27;
+  if (i >= 27) return false;
+  const r = i % 9;
+  if (mode !== 'yao' || r === 0 || r === 8) {
+    if (c[i] >= 3) {
+      c[i] -= 3;
+      if (tryMelds(c, n - 1, mode)) { c[i] += 3; return true; }
+      c[i] += 3;
+    }
+  }
+  if (mode !== 'triplet' && (mode !== 'yao' || r === 0 || r === 6)) {
+    if (r <= 6 && c[i + 1] > 0 && c[i + 2] > 0) {
+      c[i]--; c[i + 1]--; c[i + 2]--;
+      if (tryMelds(c, n - 1, mode)) { c[i]++; c[i + 1]++; c[i + 2]++; return true; }
+      c[i]++; c[i + 1]++; c[i + 2]++;
+    }
+  }
+  return false;
+}
+
+/* 和牌判定：counts 为门内手牌，openN 为副露面子数 */
+function isWinHand(counts, openN) {
+  if (openN === undefined) openN = 0;
+  const need = 4 - openN;
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (total !== 3 * need + 2) return false;
+  if (need === 0) return counts.some(x => x === 2);   // 4 副露后只剩将（金钩钓），两张必须成对
+  if (openN === 0) {
+    let allEven = true, pairs = 0;
+    for (let i = 0; i < 27; i++) { if (counts[i] % 2) { allEven = false; break; } pairs += counts[i] / 2; }
+    if (allEven && pairs === 7) return true;
+  }
+  for (let p = 0; p < 27; p++) {
+    if (counts[p] >= 2) {
+      const c = counts.slice(); c[p] -= 2;
+      if (tryMelds(c, need, 'any')) return true;
+    }
+  }
+  return false;
+}
+
+/* 番数表默认值（按你的牌桌约定） */
+const DEFAULT_FAN = {
+  ping_hu: 0, dui_dui_hu: 1, qi_dui: 2, long_qi_dui: 3,
+  qing_yi_se: 2, quan_dai_yao: 2, duan_yao_jiu: 1, jin_gou_diao: 2,
+  gen: 1, gang_shang_hua: 1, gang_shang_pao: 1, qiang_gang: 1,
+  hai_di: 1, zi_mo: 1, tian_hu: 0, di_hu: 0
+};
+const FAN_LABEL = {
+  ping_hu: '平胡', dui_dui_hu: '对对胡', qi_dui: '七对', long_qi_dui: '龙七对',
+  qing_yi_se: '清一色', quan_dai_yao: '全带幺', duan_yao_jiu: '断幺九',
+  jin_gou_diao: '金钩钓', gen: '根（四归一）', gang_shang_hua: '杠上花',
+  gang_shang_pao: '杠上炮', qiang_gang: '抢杠胡', hai_di: '海底捞月',
+  zi_mo: '自摸', tian_hu: '天胡', di_hu: '地胡'
+};
+const FAN_ORDER = ['ping_hu', 'dui_dui_hu', 'qi_dui', 'long_qi_dui', 'qing_yi_se',
+  'quan_dai_yao', 'duan_yao_jiu', 'jin_gou_diao', 'gen',
+  'gang_shang_hua', 'gang_shang_pao', 'qiang_gang', 'hai_di', 'zi_mo', 'tian_hu', 'di_hu'];
+const HAND_YAKU = ['qi_dui', 'long_qi_dui', 'qing_yi_se', 'dui_dui_hu',
+  'jin_gou_diao', 'duan_yao_jiu', 'quan_dai_yao'];
+
+/* 番型识别。opts = { melds:[{kind,tile}], ctx:{zimo,gangShangHua,...} } */
+function detectYaku(counts, opts) {
+  opts = opts || {};
+  const melds = opts.melds || [];
+  const ctx = opts.ctx || {};
+  const openN = melds.length;
+  const need = 4 - openN;
+  const out = [];
+  const total = counts.reduce((a, b) => a + b, 0);
+
+  let seven = false, longSeven = false;
+  if (openN === 0 && total === 14) {
+    let allEven = true, quads = 0;
+    for (let i = 0; i < 27; i++) { if (counts[i] % 2) allEven = false; if (counts[i] >= 4) quads++; }
+    if (allEven) { seven = true; longSeven = quads > 0; }
+  }
+
+  const suits = new Set();
+  for (let i = 0; i < 27; i++) if (counts[i]) suits.add(suitOf(i));
+  melds.forEach(m => suits.add(suitOf(m.tile)));
+  const qing = suits.size === 1;
+
+  let dui = false;
+  if (!seven && melds.every(m => m.kind !== 'chow')) {
+    for (let p = 0; p < 27 && !dui; p++) {
+      if (counts[p] >= 2) {
+        const c = counts.slice(); c[p] -= 2;
+        if (tryMelds(c, need, 'triplet')) dui = true;
+      }
+    }
+  }
+
+  let duanYao = false, quanYao = false;
+  if (!seven) {
+    let hasYao = false;
+    for (let i = 0; i < 27; i++) if (counts[i] && (i % 9 === 0 || i % 9 === 8)) hasYao = true;
+    melds.forEach(m => { const r = m.tile % 9; if (r === 0 || r === 8) hasYao = true; });
+    duanYao = !hasYao;
+    if (!duanYao) {
+      const okOpen = melds.every(m => {
+        const r = m.tile % 9;
+        return m.kind === 'chow' ? (r === 0 || r === 6) : (r === 0 || r === 8);
+      });
+      if (okOpen) {
+        for (let p = 0; p < 27 && !quanYao; p++) {
+          const r = p % 9;
+          if ((r === 0 || r === 8) && counts[p] >= 2) {
+            const c = counts.slice(); c[p] -= 2;
+            if (tryMelds(c, need, 'yao')) quanYao = true;
+          }
+        }
+      }
+    }
+  }
+
+  const comb = counts.slice();
+  melds.forEach(m => { comb[m.tile] += (m.kind === 'gang' ? 4 : 3); });
+  let gen = 0;
+  for (let i = 0; i < 27; i++) gen += Math.floor(comb[i] / 4);
+
+  const jinGou = (openN === 4 && total === 2 && counts.some(x => x === 2));
+
+  if (longSeven) {
+    out.push({ key: 'long_qi_dui', times: 1 });
+    gen = Math.max(0, gen - 1);            // 龙七对已含第一根，额外根才另计
+  }
+  else if (seven) out.push({ key: 'qi_dui', times: 1 });
+  if (qing) out.push({ key: 'qing_yi_se', times: 1 });
+  if (dui && !jinGou) out.push({ key: 'dui_dui_hu', times: 1 });   // 金钩钓已含对对胡，不重复计
+  if (jinGou) out.push({ key: 'jin_gou_diao', times: 1 });
+  if (!seven) {
+    if (duanYao) out.push({ key: 'duan_yao_jiu', times: 1 });
+    else if (quanYao) out.push({ key: 'quan_dai_yao', times: 1 });
+  }
+  if (gen > 0) out.push({ key: 'gen', times: gen });
+  if (ctx.zimo) out.push({ key: 'zi_mo', times: 1 });
+  if (ctx.gangShangHua) out.push({ key: 'gang_shang_hua', times: 1 });
+  if (ctx.gangShangPao) out.push({ key: 'gang_shang_pao', times: 1 });
+  if (ctx.qiangGang) out.push({ key: 'qiang_gang', times: 1 });
+  if (ctx.haiDi) out.push({ key: 'hai_di', times: 1 });
+  if (ctx.tianHu) out.push({ key: 'tian_hu', times: 1 });
+  if (ctx.diHu) out.push({ key: 'di_hu', times: 1 });
+  if (!out.some(o => HAND_YAKU.indexOf(o.key) >= 0)) out.push({ key: 'ping_hu', times: 1 });
+  return out;
+}
+
+/* 计分：得分 = 底分 × 2^番数，可封顶（cap ≤ 0 表示不封顶） */
+function scoreYaku(entries, table, cap, base) {
+  const t = table || DEFAULT_FAN;
+  const effCap = (typeof cap === 'number' && cap > 0) ? cap : 0;
+  const effBase = (typeof base === 'number' && base > 0) ? base : 1;
+  const details = {};
+  let raw = 0;
+  entries.forEach(e => {
+    const v = (t[e.key] !== undefined ? t[e.key] : (DEFAULT_FAN[e.key] || 0)) * e.times;
+    details[e.key] = (details[e.key] || 0) + v;
+    raw += v;
+  });
+  const capped = effCap > 0 ? Math.min(raw, effCap) : raw;
+  return { details, raw, capped, points: Math.pow(2, capped) * effBase, cap: effCap, base: effBase };
+}
+
+/* 文本解析：支持两种写法
+   A) w1234t5678s123   （w/m=万 t/p/d=筒 s=条）
+   B) 123456789m 111m 22m   或   1m2m3m... */
+function parseHandText(str) {
+  const s = String(str || '').toLowerCase().replace(/[\s,，、;；|]/g, '');
+  const suitOfCh = ch =>
+    (ch === 'w' || ch === 'm') ? 0 :
+    (ch === 's') ? 1 :
+    (ch === 't' || ch === 'p' || ch === 'd') ? 2 : -1;
+  const tiles = [];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    const suit = suitOfCh(ch);
+    if (suit >= 0) {                       // A：字母在前
+      i++;
+      let n = 0;
+      while (i < s.length && /[1-9]/.test(s[i])) { tiles.push(suit * 9 + (+s[i]) - 1); i++; n++; }
+      if (n === 0) return null;
+    } else if (/[1-9]/.test(ch)) {          // B：数字在前
+      const digits = [];
+      while (i < s.length && /[1-9]/.test(s[i])) { digits.push(+s[i]); i++; }
+      if (i >= s.length) return null;
+      const su = suitOfCh(s[i]);
+      if (su < 0) return null;
+      i++;
+      digits.forEach(d => tiles.push(su * 9 + d - 1));
+    } else {
+      return null;
+    }
+  }
+  if (!tiles.length || tiles.length > 14) return null;
+  return tiles.sort((a, b) => a - b);
+}
+
+/* ============================================================
+   牌河（场上已见牌）
+   ============================================================ */
+
+/* 生成一条牌河：从指定花色里随机抽 n 张（不与手牌冲突） */
+function genRiver(hand, n, suits) {
+  const inHand = toCounts(hand);
+  const pool = [];
+  for (let k = 0; k < 27; k++) {
+    if (suits && suits.indexOf(suitOf(k)) < 0) continue;
+    for (let j = inHand[k]; j < 4; j++) pool.push(k);
+  }
+  shuffle(pool);
+  const river = new Array(27).fill(0);
+  const take = Math.min(n, pool.length);
+  for (let i = 0; i < take; i++) river[pool[i]]++;
+  return river;
+}
+
+/* ============================================================
+   番型速算 / 牌河牌效 出题器
+   ============================================================ */
+
+function buildWinHand(opts) {
+  opts = opts || {};
+  const suits = opts.suits || [0, 1, 2];
+  for (let attempt = 0; attempt < 260; attempt++) {
+    const c = new Array(27).fill(0);
+    const ok = arr => { for (const k of arr) if (c[k] >= 4) return false; return true; };
+    const put = arr => { for (const k of arr) c[k]++; };
+    let bad = false;
+    for (let i = 0; i < 4 && !bad; i++) {
+      let done = false;
+      for (let t = 0; t < 90 && !done; t++) {
+        const s = suits[(Math.random() * suits.length) | 0];
+        const r = (Math.random() * 9) | 0;
+        const k = s * 9 + r;
+        let meld;
+        if (opts.allTriplets || Math.random() < 0.45) {
+          if (opts.allYao && r !== 0 && r !== 8) continue;
+          if (opts.noYao && (r === 0 || r === 8)) continue;
+          meld = [k, k, k];
+        } else {
+          if (r + 2 > 8) continue;
+          if (opts.allYao && r !== 0 && r !== 6) continue;
+          if (opts.noYao && (r === 0 || r + 2 === 8)) continue;
+          meld = [k, k + 1, k + 2];
+        }
+        if (ok(meld)) { put(meld); done = true; }
+      }
+      if (!done) bad = true;
+    }
+    if (bad) continue;
+    let done = false;
+    for (let t = 0; t < 90 && !done; t++) {
+      const s = suits[(Math.random() * suits.length) | 0];
+      const r = (Math.random() * 9) | 0;
+      const k = s * 9 + r;
+      if (opts.allYao && r !== 0 && r !== 8) continue;
+      if (opts.noYao && (r === 0 || r === 8)) continue;
+      if (ok([k, k])) { put([k, k]); done = true; }
+    }
+    if (!done) continue;
+    const tiles = [];
+    for (let i = 0; i < 27; i++) for (let j = 0; j < c[i]; j++) tiles.push(i);
+    if (tiles.length === 14 && isWinHand(c, 0)) return tiles;
+  }
+  return null;
+}
+
+/* 金钩钓牌型：4 组副露（碰）+ 手里一对（用于番型速算） */
+function buildJinGou(oneSuit) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const suits = oneSuit ? [(Math.random() * 3) | 0] : [0, 1, 2];
+    const c = new Array(27).fill(0);
+    const melds = [];
+    for (let i = 0; i < 4; i++) {
+      let done = false;
+      for (let t = 0; t < 160 && !done; t++) {
+        const k = suits[(Math.random() * suits.length) | 0] * 9 + ((Math.random() * 9) | 0);
+        if (c[k] === 0) { c[k] = 3; melds.push({ kind: 'pong', tile: k }); done = true; }
+      }
+      if (!done) break;
+    }
+    if (melds.length !== 4) continue;
+    let pair = -1;
+    for (let t = 0; t < 160 && pair < 0; t++) {
+      const k = suits[(Math.random() * suits.length) | 0] * 9 + ((Math.random() * 9) | 0);
+      if (c[k] === 0) { c[k] = 2; pair = k; }
+    }
+    if (pair < 0) continue;
+    return { hand: [pair, pair], melds };
+  }
+  return null;
+}
+
+function buildSevenPairs(oneSuit) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const suits = oneSuit ? [(Math.random() * 3) | 0] : [0, 1, 2];
+    const isLong = Math.random() < 0.45;          // 龙七对：6 种牌，其中 1 种 4 张
+    const needKinds = isLong ? 6 : 7;
+    const c = new Array(27).fill(0);
+    let kinds = 0;
+    for (let t = 0; t < 400 && kinds < needKinds; t++) {
+      const s = suits[(Math.random() * suits.length) | 0];
+      const k = s * 9 + ((Math.random() * 9) | 0);
+      if (c[k] === 0) { c[k] = 2; kinds++; }
+    }
+    if (kinds !== needKinds) continue;
+    if (isLong) {
+      const cand = [];
+      for (let i = 0; i < 27; i++) if (c[i] === 2) cand.push(i);
+      c[cand[(Math.random() * cand.length) | 0]] = 4;
+    }
+    const tiles = [];
+    for (let i = 0; i < 27; i++) for (let j = 0; j < c[i]; j++) tiles.push(i);
+    if (tiles.length !== 14) continue;
+    return tiles;
+  }
+  return null;
+}
+
+/* 番型速算题：一副已和的手牌 + 随机自摸/点炮
+   cfg = { table, cap, base }：使用界面上的番数设置；不传时用默认番表 + 3 番封顶 */
+function genFan(diff, cfg) {
+  cfg = cfg || {};
+  const fanT = cfg.table || DEFAULT_FAN;
+  const cap = (typeof cfg.cap === 'number') ? cfg.cap : 3;
+  const base = (typeof cfg.base === 'number') ? cfg.base : 1;
+  for (let attempt = 0; attempt < 260; attempt++) {
+    const relax = attempt > 150;            // 后期放宽难度，保证不返回空题
+    const roll = Math.random();
+    let hand = null, melds = null;
+    if (roll < 0.15) {                      // 金钩钓：4 组副露 + 手里一对
+      const jg = buildJinGou(Math.random() < 0.3);
+      if (jg) { hand = jg.hand; melds = jg.melds; }
+    }
+    else if (roll < 0.35) hand = buildSevenPairs(Math.random() < 0.25);
+    else if (roll < 0.58) hand = buildWinHand({ allTriplets: true });
+    else if (roll < 0.78) hand = buildWinHand({ suits: [(Math.random() * 3) | 0] });
+    else if (roll < 0.90) hand = buildWinHand({ allYao: true });
+    else hand = buildWinHand({ noYao: true });
+    if (!hand) hand = buildWinHand({});
+    if (!hand) continue;
+    const c = toCounts(hand);
+    const ctx = { zimo: Math.random() < 0.5 };
+    const yaku = detectYaku(c, { melds: melds || [], ctx });
+    const scored = scoreYaku(yaku, fanT, cap, base);
+    if (scored.capped > 8) continue;       // 不封顶时也把答案限制在 0~8，答题按钮才够用
+    if (!relax) {
+      if (diff === 1 && scored.capped > 1) continue;
+      if (diff === 2 && scored.capped > 2) continue;
+      if (diff === 3 && scored.capped < 2) continue;
+    }
+    return { hand, ctx, yaku, scored, table: fanT, melds, openN: melds ? melds.length : 0 };
+  }
+  return null;
+}
+
+/* 牌河牌效题：手牌 + 牌河（场上已见） */
+function genDefense(diff, needVoid, openN) {
+  openN = openN || 0;
+  const size = 14 - 3 * openN;
+  if (size < 2) return null;
+  const suits = needVoid ? pick2() : [0, 1, 2];
+  const keep = [false, false, false];
+  for (const s of suits) keep[s] = true;
+  for (let attempt = 0; attempt < 260; attempt++) {
+    const hand = deal(size, suits);
+    const river = genRiver(hand, 14 + ((Math.random() * 8) | 0), suits);
+    const { options, best } = analyzeCut(hand, keep, openN, river);
+    if (!best || best.shanten > 2) continue;
+    if (best.ukeire < 3) continue;
+    const sameSh = options.filter(o => o.shanten === best.shanten);
+    const sorted = sameSh.slice().sort((a, b) => b.ukeire - a.ukeire);
+    if (sorted.length < 2) continue;
+    if (sorted[0].ukeire - sorted[1].ukeire < (diff === 1 ? 2 : 1)) continue;
+    return { hand, river, options, best, keep };
+  }
+  return null;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { shantenStd, shanten7, shanten, toCounts, ukeire, suitOf, rankOf, tileCN, tileEN, groupSuits, deal, analyzeCut, genCut, genVoid, voidEval, genTen, decompose, floatPotential, blockName,
+    tryMelds, isWinHand, detectYaku, scoreYaku, parseHandText, genRiver, genFan, genDefense, buildWinHand, buildSevenPairs, buildJinGou,
+    DEFAULT_FAN, FAN_LABEL, FAN_ORDER };
+}
+// __CORE_END__
+</script>
+
+<script>
+/* ============================================================
+   UI 层
+   ============================================================ */
+/* 核心函数在上一个 <script> 的全局词法作用域中，可直接引用 */
+const $ = s => document.querySelector(s);
+const state = {
+  mode: 'cut', diff: 2, needVoid: true, aka: false, withRiver: false, openN: 0,
+  q: null, answered: false, t0: 0, timerId: null, picked: null, custom: null
+};
+
+/* ---------- 番数表 ---------- */
+const FKEY = 'mjtrainer.fan.v1';
+let fanTable = loadFan();
+function loadFan() {
+  let t = {};
+  try { t = JSON.parse(localStorage.getItem(FKEY)) || {}; } catch (e) { t = {}; }
+  const out = {};
+  FAN_ORDER.forEach(k => { out[k] = (typeof t[k] === 'number' && isFinite(t[k])) ? t[k] : DEFAULT_FAN[k]; });
+  return out;
+}
+function saveFan() { try { localStorage.setItem(FKEY, JSON.stringify(fanTable)); } catch (e) {} }
+function fanHintText() {
+  const cap = state.cap > 0 ? `${state.cap} 番封顶` : '不封顶';
+  return `得分 = 底分 ${state.base} × 2^番数（封顶后）。你当前：七对 ${fanTable.qi_dui} / 龙七对 ${fanTable.long_qi_dui} / 对对胡 ${fanTable.dui_dui_hu} / 金钩钓 ${fanTable.jin_gou_diao} / 自摸 +${fanTable.zi_mo} / ${cap}`;
+}
+function renderFanCfg() {
+  $('#fanCfgBody').innerHTML =
+    `<div class="fanGrid">` + FAN_ORDER.map(k =>
+      `<label><span>${FAN_LABEL[k]}</span>` +
+      `<input type="number" min="0" max="8" data-fan="${k}" value="${fanTable[k]}"></label>`).join('') +
+    `</div>` +
+    `<div class="bar" style="margin-top:10px">` +
+    `<span class="lbl">封顶</span><input id="fanCap" type="number" min="0" max="8" value="${state.cap}" style="width:52px;padding:3px 6px;border:1px solid #d9dee6;border-radius:6px;font:inherit;font-size:12.5px;text-align:center">` +
+    `<span class="lbl">底分</span><input id="fanBase" type="number" min="1" max="100" value="${state.base}" style="width:52px;padding:3px 6px;border:1px solid #d9dee6;border-radius:6px;font:inherit;font-size:12.5px;text-align:center">` +
+    `<button id="fanReset">恢复默认</button>` +
+    `<span class="hint" id="fanHint">${fanHintText()}</span>` +
+    `</div>`;
+  const refresh = () => {                    // 配置改了立刻生效：刷新提示，并把未作答的番型题按新配置重出
+    const el = $('#fanHint'); if (el) el.textContent = fanHintText();
+    if (state.mode === 'fan' && !state.answered) newQuestion();
+  };
+  $('#fanCfgBody').querySelectorAll('input[data-fan]').forEach(inp => {
+    inp.onchange = () => {
+      const v = Math.max(0, Math.min(8, parseInt(inp.value, 10) || 0));
+      fanTable[inp.dataset.fan] = v; inp.value = v; saveFan(); refresh();
+    };
+  });
+  $('#fanCap').onchange = e => { state.cap = Math.max(0, parseInt(e.target.value, 10) || 0); saveCfg(); refresh(); };
+  $('#fanBase').onchange = e => { state.base = Math.max(1, parseInt(e.target.value, 10) || 1); saveCfg(); refresh(); };
+  $('#fanReset').onclick = () => { fanTable = Object.assign({}, DEFAULT_FAN); saveFan(); renderFanCfg(); };
+}
+const CKEY = 'mjtrainer.cfg.v1';
+function saveCfg() { try { localStorage.setItem(CKEY, JSON.stringify({ cap: state.cap, base: state.base })); } catch (e) {} }
+(function initCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CKEY)) || {};
+    state.cap = (typeof c.cap === 'number') ? c.cap : 3;
+    state.base = (typeof c.base === 'number') ? c.base : 1;
+  } catch (e) { state.cap = 3; state.base = 1; }
+})();
+
+/* ---------- 错题本 ---------- */
+const WKEY = 'mjtrainer.wb.v1';
+let wb = loadWB();
+function loadWB() {
+  try { const a = JSON.parse(localStorage.getItem(WKEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function saveWB() { try { localStorage.setItem(WKEY, JSON.stringify(wb.slice(-120))); } catch (e) {} }
+function addWrong(q, mode, mineKey, bestKeys) {
+  const entry = {
+    id: Date.now() + '_' + Math.floor(Math.random() * 1000),
+    mode, ts: Date.now(),
+    hand: q.hand,
+    keep: q.keep || [true, true, true],
+    river: q.river ? q.river.slice() : null,
+    ctx: q.ctx || null,
+    melds: q.melds || null,
+    openN: q.openN !== undefined ? q.openN : state.openN,
+    diff: state.diff,
+    best: bestKeys, mine: mineKey
+  };
+  wb.push(entry); saveWB(); renderWrongBook();
+}
+function renderWrongBook() {
+  $('#wbCount').textContent = wb.length;
+  if (!wb.length) { $('#wbBody').innerHTML = '<div class="hint">还没有错题。答错的题会自动存到这里。</div>'; return; }
+  const cols = state.aka ? tileEN : tileCN;
+  const modeName = { cut: '何切', def: '牌河牌效', void: '定缺', ten: '听牌', fan: '番型' };
+  let h = '';
+  wb.slice().reverse().slice(0, 40).forEach(e => {
+    const d = new Date(e.ts);
+    const t = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    h += `<div class="wbItem"><div class="h">${e.melds && e.melds.length ? '副露×' + e.melds.length + ' · ' : ''}${e.hand.map(cols).join(' ')}</div>` +
+      `<div class="t">${modeName[e.mode] || e.mode} · ${t}</div>` +
+      `<button data-redo="${e.id}">重做</button>` +
+      `<button data-del="${e.id}">删</button></div>`;
+  });
+  h += `<div class="bar" style="margin-top:10px"><button id="wbExport">导出 JSON</button>` +
+    `<button id="wbImport">导入 JSON</button><button id="wbClear">清空错题本</button>` +
+    `<span class="hint">最多保留 120 题，存在本机浏览器。</span></div>`;
+  $('#wbBody').innerHTML = h;
+  $('#wbBody').querySelectorAll('[data-redo]').forEach(b => b.onclick = () => redoWrong(b.dataset.redo));
+  $('#wbBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    wb = wb.filter(x => x.id !== b.dataset.del); saveWB(); renderWrongBook();
+  });
+  $('#wbExport').onclick = () => {
+    const blob = new Blob([JSON.stringify(wb, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mahjong-wrongbook-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+  };
+  $('#wbImport').onclick = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json';
+    inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        try {
+          const a = JSON.parse(r.result);
+          if (!Array.isArray(a)) throw 0;
+          const ids = new Set(wb.map(x => x.id));
+          a.forEach(x => { if (x && x.hand && !ids.has(x.id)) wb.push(x); });
+          saveWB(); renderWrongBook();
+        } catch (e) { alert('文件格式不对'); }
+      };
+      r.readAsText(f);
+    };
+    inp.click();
+  };
+  $('#wbClear').onclick = () => { if (confirm('清空错题本？')) { wb = []; saveWB(); renderWrongBook(); } };
+}
+function redoWrong(id) {
+  const e = wb.find(x => x.id === id); if (!e) return;
+  state.openN = e.openN || 0;
+  document.querySelectorAll('[data-open]').forEach(b => b.classList.toggle('on', +b.dataset.open === state.openN));
+  if (e.mode === 'cut' || e.mode === 'def') {
+    state.mode = 'cut';
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x.dataset.mode === 'cut'));
+    const { options, best } = analyzeCut(e.hand, e.keep, state.openN, e.river);
+    state.q = { hand: e.hand, options, best, keep: e.keep, river: e.river };
+    $('#resultCard').style.display = 'none';
+    $('#blockPanel').style.display = 'none';
+    $('#meldRow').style.display = 'none'; $('#meldRow').innerHTML = '';
+    document.querySelectorAll('#voidBar,#tenBar,#fanBar').forEach(x => x.remove());
+    state.answered = false;
+    $('#taskHint').innerHTML = '错题重做：从 14 张里选出<b>最优的一张</b>打出';
+    renderHand(e.hand, { kbd: true, onPick: onPickCut });
+    renderRiver(e.river);
+    startTimer();
+  } else if (e.mode === 'fan') {
+    state.mode = 'fan';
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x.dataset.mode === 'fan'));
+    const ctx = e.ctx || {};
+    const yaku = detectYaku(toCounts(e.hand), { melds: e.melds || [], ctx });
+    const scored = scoreYaku(yaku, fanTable, state.cap, state.base);
+    const q = { hand: e.hand, ctx, yaku, scored, table: fanTable, melds: e.melds || null, openN: e.melds ? e.melds.length : 0 };
+    state.q = q;
+    $('#resultCard').style.display = 'none';
+    $('#blockPanel').style.display = 'none';
+    document.querySelectorAll('#voidBar,#tenBar,#fanBar').forEach(x => x.remove());
+    state.answered = false;
+    $('#taskHint').innerHTML = q.melds
+      ? '错题重做：已亮明 <b>4 组副露</b>，手里只剩一对，请问算<b>几番</b>？'
+      : `错题重做：${q.ctx.zimo ? '自摸' : '点炮和'}，请问算几番？`;
+    renderHand(e.hand, {});
+    showFanMelds(q);
+    renderFanBar(q);
+    $('#tip').innerHTML = '得分 = 底分 × 2^番数。点「番数设置」可以改成你牌桌的约定。';
+    startTimer();
+  } else {
+    alert('该模式暂不支持重做，已切换回何切模式');
+  }
+}
+
+/* ---------- 错误模式统计 ---------- */
+function renderErrStats() {
+  const e = stats.err || {};
+  const rows = [
+    ['拆面子/搭子导致向听变差', e.shanten || 0, '最常见：把完整的面子或搭子拆掉。用「拆块检查」对着看。'],
+    ['同向听但有效牌选少', e.ukeire || 0, '向听算对了，但没看出哪张保留的改良路线更多。'],
+    ['忽略牌河', e.river || 0, '没把场上已出的牌从有效牌里扣掉。'],
+    ['定缺决策错', e.dingque || 0, '定缺顺序：张数 → 剩余向听 → 有效牌 → 搭子好形。'],
+    ['听牌点数错', e.tenpai || 0, '数听牌种类时漏算或多算。'],
+    ['番型速算错', e.fan || 0, '漏算或重复计算番型。']
+  ];
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  $('#errBody').innerHTML = `<table><thead><tr><th>错误类型</th><th>次数</th><th>分布</th><th>怎么改</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${r[0]}</td><td><b>${r[1]}</b></td>` +
+      `<td style="width:120px"><div style="height:8px;background:#e9eef5;border-radius:4px"><div style="height:8px;width:${Math.round(r[1] / max * 100)}%;background:#2b6cb0;border-radius:4px"></div></div></td>` +
+      `<td class="mut">${r[2]}</td></tr>`).join('') + `</tbody></table>`;
+}
+
+/* ---------- 统计 ---------- */
+const SKEY = 'mjtrainer.stats.v1';
+let stats = loadStats();
+function loadStats() {
+  try { const o = JSON.parse(localStorage.getItem(SKEY)); if (!o) return fresh(); if (!o.err) o.err = {}; return o; } catch (e) { return fresh(); }
+}
+function fresh() { return { n: 0, ok: 0, ms: 0, streak: 0, best: 0, byMode: {}, err: {} }; }
+function saveStats() { try { localStorage.setItem(SKEY, JSON.stringify(stats)); } catch (e) {} }
+function bumpErr(k) { stats.err[k] = (stats.err[k] || 0) + 1; }
+function renderStats() {
+  const acc = stats.n ? (stats.ok / stats.n * 100).toFixed(1) + '%' : '—';
+  const avg = stats.n ? (stats.ms / stats.n / 1000).toFixed(1) + 's' : '—';
+  $('#stats').innerHTML =
+    `<div><span class="mut">题数</span><br><b>${stats.n}</b></div>` +
+    `<div><span class="mut">正确率</span><br><b>${acc}</b></div>` +
+    `<div><span class="mut">平均用时</span><br><b>${avg}</b></div>` +
+    `<div><span class="mut">连对</span><br><b>${stats.streak}</b></div>` +
+    `<div><span class="mut">最高连对</span><br><b>${stats.best}</b></div>`;
+  renderErrStats();
+}
+
+/* ---------- 通用 ---------- */
+function tileEl(k, opts = {}) {
+  const d = document.createElement('div');
+  d.className = 'tile ' + ['w', 't', 'd'][suitOf(k)];
+  d.dataset.k = k;
+  d.innerHTML = state.aka
+    ? `<div class="n" style="font-size:19px">${tileEN(k)}</div>`
+    : `<div class="n">${rankOf(k)}</div><div class="s">${['万', '条', '筒'][suitOf(k)]}</div>`;
+  if (opts.kbd) {
+    const s = document.createElement('div'); s.className = 'kbd'; s.textContent = opts.kbd;
+    d.appendChild(s);
+  }
+  return d;
+}
+const KEYMAP = ['1','2','3','4','5','6','7','8','9','a','s','d','f','g','h'];
+
+function renderHand(hand, cfg = {}) {
+  const el = $('#hand');
+  el.innerHTML = '';
+  const groups = groupSuits(hand);
+  let pos = 0;
+  groups.forEach(g => {
+    if (!g.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'grp';
+    g.forEach(t => {
+      const te = tileEl(t, cfg.kbd ? { kbd: KEYMAP[pos] } : {});
+      te.dataset.pos = pos;
+      if (cfg.onPick) te.addEventListener('click', () => cfg.onPick(t, pos, te));
+      wrap.appendChild(te);
+      pos++;
+    });
+    el.appendChild(wrap);
+  });
+}
+
+/* ---------- 计时 ---------- */
+function startTimer() {
+  state.t0 = performance.now();
+  clearInterval(state.timerId);
+  state.timerId = setInterval(() => {
+    $('#timer').textContent = ((performance.now() - state.t0) / 1000).toFixed(1) + 's';
+  }, 100);
+}
+function stopTimer() { clearInterval(state.timerId); state.timerId = null; }
+
+/* ---------- 牌河展示 ---------- */
+function renderRiver(river) {
+  const box = $('#riverBox');
+  if (!river) { box.style.display = 'none'; return; }
+  const cols = state.aka ? tileEN : tileCN;
+  const inHand = state.q && state.q.hand ? toCounts(state.q.hand) : new Array(27).fill(0);
+  let items = '';
+  for (let k = 0; k < 27; k++) {
+    if (!river[k]) continue;
+    const hot = river[k] + inHand[k] >= 4;
+    items += `<span class="rt${hot ? ' hot' : ''}">${cols(k)}×${river[k]}</span>`;
+  }
+  const total = river.reduce((a, b) => a + b, 0);
+  box.innerHTML = `<div class="river"><div class="rl">牌河（场上已打出 ${total} 张，不计自己手牌）—— 红色 = 已全见</div>` +
+    (items || '<span class="mut">（空）</span>') +
+    `<div class="rl" style="margin-top:6px">有效牌张数已扣掉这里已见的牌</div></div>`;
+  box.style.display = '';
+}
+
+/* ---------- 番型题：副露展示 + 番数答题按钮 ---------- */
+function showFanMelds(q) {
+  const box = $('#meldRow');
+  if (!q.melds || !q.melds.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const cols = state.aka ? tileEN : tileCN;
+  box.innerHTML = `<div class="river"><div class="rl">副露（已亮明 ${q.melds.length} 组）</div>` +
+    q.melds.map(m => `<span class="rt">${Array(m.kind === 'gang' ? 4 : 3).fill(cols(m.tile)).join(' ')}</span>`).join('') +
+    `</div>`;
+  box.style.display = '';
+}
+function renderFanBar(q) {
+  const bar = document.createElement('div');
+  bar.className = 'bar'; bar.style.marginTop = '10px';
+  bar.innerHTML = '<span class="lbl">番数</span>';
+  const maxFan = q.scored.cap > 0 ? q.scored.cap : 8;      // 封顶值自定义后，选项跟着变；不封顶时给到 0~8
+  for (let f = 0; f <= maxFan; f++) {
+    const b = document.createElement('button');
+    b.textContent = (q.scored.cap > 0 && f === q.scored.cap) ? f + ' 番（封顶）' : f + ' 番';
+    b.onclick = () => onPickFan(f);
+    bar.appendChild(b);
+  }
+  bar.id = 'fanBar';
+  $('#hand').after(bar);
+}
+
+/* ---------- 出题 ---------- */
+function newQuestion() {
+  state.answered = false; state.picked = null;
+  document.querySelectorAll('#voidBar,#tenBar,#fanBar').forEach(e => e.remove());
+  $('#blockPanel').style.display = 'none';
+  $('#btnBlocks').classList.remove('on');
+  $('#resultCard').style.display = 'none';
+  $('#resultCard').classList.remove('flash');
+  $('#verdict').textContent = ''; $('#detail').innerHTML = '';
+  $('#tip').textContent = '';
+  $('#riverBox').style.display = 'none';
+  $('#meldRow').style.display = 'none'; $('#meldRow').innerHTML = '';
+  const show = h => renderHand(h, {});
+
+  /* 手动载入的牌型优先：直接展示分析，不计分 */
+  if (state.custom) {
+    const hand = state.custom.slice();
+    const keep = [false, false, false];
+    new Set(hand.map(suitOf)).forEach(s => keep[s] = true);
+    if (hand.length === 14) {
+      const r = analyzeCut(hand, keep, state.openN, null);
+      state.q = { hand, options: r.options, best: r.best, keep, river: null, manual: true };
+      $('#taskHint').innerHTML = '手动牌型（不计分）：14 张，最佳弃牌已算出';
+      show(hand);
+      onPickCut(r.options[0].tile, 0, null);
+    } else {
+      const u = ukeire(toCounts(hand), keep, state.openN, null);
+      state.q = { hand, u, keep, river: null, manual: true };
+      $('#taskHint').innerHTML = '手动牌型（不计分）：' + hand.length + ' 张，当前向听 ' + (u.base < 0 ? '已和牌' : u.base);
+      show(hand);
+      state.answered = true;
+      $('#tip').innerHTML = u.list.length
+        ? '听牌 ' + u.list.length + ' 种，共 ' + u.total + ' 张：' + u.list.map(tileCN).join(' ')
+        : '未听牌。可点「拆块检查」看向听结构。';
+    }
+    startTimer();
+    return;
+  }
+
+  let q = null;
+  if (state.mode === 'cut' || state.mode === 'def') {
+    q = state.mode === 'def'
+      ? genDefense(state.diff, state.needVoid, state.openN)
+      : genCut(state.diff, state.needVoid, state.withRiver, state.openN);
+    if (!q) { $('#hand').innerHTML = '<span class="mut">生成失败，请重试或降低难度</span>'; return; }
+    state.q = q;
+    $('#taskHint').innerHTML = state.mode === 'def'
+      ? '结合<b>牌河</b>，从 14 张里选出最优的一张打出（有效牌已扣除场上已见的牌）'
+      : '从 14 张里选出<b>最优的一张</b>打出（按向听 → 有效牌张数排序）';
+    renderHand(q.hand, { kbd: true, onPick: onPickCut });
+    renderRiver(q.river);
+    $('#tip').innerHTML = '同向听比有效牌张数，同张数比好形：两面 &gt; 嵌张 &gt; 边张 &gt; 对子';
+  }
+  else if (state.mode === 'void') {
+    q = genVoid(state.diff);
+    if (!q) { $('#hand').innerHTML = '<span class="mut">生成失败，请重试或降低难度</span>'; return; }
+    state.q = q;
+    $('#taskHint').innerHTML = '这副牌该<b>定缺哪一门</b>？（点下面的花色按钮）';
+    show(q.hand);
+    const bar = document.createElement('div');
+    bar.className = 'bar'; bar.style.marginTop = '10px';
+    [0, 1, 2].forEach(s => {
+      const b = document.createElement('button');
+      b.textContent = '缺 ' + ['万', '条', '筒'][s];
+      b.onclick = () => onPickVoid(s);
+      bar.appendChild(b);
+    });
+    bar.id = 'voidBar';
+    $('#hand').after(bar);
+    $('#tip').innerHTML = '判定顺序：① 缺门张数少 → ② 剩余两门向听低 → ③ 有效牌张数多 → ④ 搭子好形多（越靠前权重越高）';
+  }
+  else if (state.mode === 'fan') {
+    q = genFan(state.diff, { table: fanTable, cap: state.cap, base: state.base });
+    if (!q) { $('#hand').innerHTML = '<span class="mut">生成失败，请重试</span>'; return; }
+    state.q = q;
+    $('#taskHint').innerHTML = q.melds && q.melds.length
+      ? '已亮明 <b>4 组副露</b>，手里只剩一对（金钩钓），请问算<b>几番</b>？'
+      : `这是一副<b>已和</b>的手牌（${q.ctx.zimo ? '自摸' : '点炮和'}），请问算<b>几番</b>？`;
+    show(q.hand);
+    showFanMelds(q);
+    renderFanBar(q);
+    $('#tip').innerHTML = '得分 = 底分 × 2^番数。点「番数设置」可以改成你牌桌的约定。';
+  }
+  else {
+    q = genTen(state.diff, state.needVoid, state.tenWaits, state.openN);
+    if (!q) { $('#hand').innerHTML = '<span class="mut">生成失败，请重试或降低难度</span>'; return; }
+    state.q = q;
+    $('#taskHint').innerHTML = '这副牌<b>已听牌</b>，请问听几种牌？（在下方输入数字）';
+    show(q.hand);
+    const bar = document.createElement('div');
+    bar.className = 'bar'; bar.style.marginTop = '10px';
+    bar.innerHTML = '<span class="lbl">听牌种类数</span>';
+    const inp = document.createElement('input');
+    inp.id = 'tenIn'; inp.type = 'number'; inp.min = 1; inp.max = 13;
+    inp.style.cssText = 'width:70px;padding:4px 8px;border:1px solid #d9dee6;border-radius:7px;font:inherit';
+    const b = document.createElement('button');
+    b.className = 'primary'; b.textContent = '提交 (Enter)';
+    b.onclick = () => onPickTen(inp.value);
+    const sel = document.createElement('select');
+    sel.style.cssText = 'padding:4px 8px;border:1px solid #d9dee6;border-radius:7px;font:inherit';
+    [['any', '面数：随机'], ['1', '听 1 种'], ['2', '听 2 种'], ['3', '听 3 种以上']].forEach(o => {
+      const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1];
+      if (String(state.tenWaits) === o[0]) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.onchange = () => { state.tenWaits = sel.value === 'any' ? 'any' : +sel.value; clearBars(); newQuestion(); };
+    bar.appendChild(inp); bar.appendChild(b); bar.appendChild(sel);
+    bar.id = 'tenBar';
+    $('#hand').after(bar);
+    $('#tip').textContent = '提示：缺门花色永远是死牌，不计入听牌。';
+  }
+  startTimer();
+}
+
+function clearBars() {
+  document.querySelectorAll('#voidBar,#tenBar,#fanBar').forEach(e => e.remove());
+}
+
+/* ---------- 作答与判定 ---------- */
+function record(ok, elapsed, errKey) {
+  if (state.q && state.q.manual) return;
+  stats.n++; if (ok) { stats.ok++; stats.streak++; stats.best = Math.max(stats.best, stats.streak); }
+  else stats.streak = 0;
+  stats.ms += elapsed;
+  const m = stats.byMode[state.mode] || (stats.byMode[state.mode] = { n: 0, ok: 0 });
+  m.n++; if (ok) m.ok++;
+  if (!ok && errKey) bumpErr(errKey);
+  saveStats(); renderStats();
+}
+
+function onPickCut(tile, pos, el) {
+  const q = state.q;
+  if (state.answered) return;
+  state.answered = true; stopTimer();
+  const elapsed = performance.now() - state.t0;
+  state.picked = tile;
+
+  const bestSh = q.best.shanten;
+  const bestU = q.best.ukeire;
+  const mine = q.options.find(o => o.tile === tile);
+  const tied = q.options.filter(o => o.shanten === bestSh && o.ukeire === bestU);
+  const ok = (mine.shanten === bestSh && mine.ukeire === bestU);
+
+  // 标记
+  document.querySelectorAll('#hand .tile').forEach(e => {
+    const k = +e.dataset.k;
+    if (tied.some(o => o.tile === k)) e.classList.add('ok');
+    else if (e === el) e.classList.add('bad');
+    else e.classList.add('dim');
+  });
+
+  const errKey = ok ? null : (mine.shanten > bestSh ? 'shanten' : (q.river ? 'river' : 'ukeire'));
+  record(ok, elapsed, errKey);
+  if (!ok) addWrong(q, state.mode, tile, tied.map(o => o.tile));
+  showCutResult(q, mine, ok, tied);
+}
+
+/* ---------- 番型速算作答 ---------- */
+function onPickFan(f) {
+  if (state.answered) return;
+  state.answered = true; stopTimer();
+  const elapsed = performance.now() - state.t0;
+  const q = state.q;
+  const got = q.scored.capped;
+  const ok = (f === got);
+  record(ok, elapsed, ok ? null : 'fan');
+  if (!ok) addWrong(q, 'fan', f, [got]);
+
+  const ks = Object.keys(q.scored.details);
+  const rows = ks.map(k => `<tr><td>${FAN_LABEL[k] || k}</td><td><b>${q.scored.details[k]}</b></td></tr>`).join('');
+  const pts = q.scored.points;
+
+  $('#verdict').innerHTML =
+    (ok ? '<span class="big ok">✓ 正确</span>' : `<span class="big bad">✗ 实际 ${got} 番</span>`) +
+    ` <span class="mut">你选了 ${f} 番</span>`;
+
+  let html = `<div class="sec"><div class="t"><span class="n">1</span>和牌型与番型</div>` +
+    `<table><thead><tr><th>番型</th><th>番数</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<div class="fml">原始 = ${ks.map(k => `${FAN_LABEL[k]} ${q.scored.details[k]}`).join(' + ')} = <b>${q.scored.raw}</b> 番<br>` +
+    (q.scored.cap > 0 ? `封顶 ${q.scored.cap} 番 → <b>${got}</b> 番<br>` : `不封顶 → <b>${got}</b> 番<br>`) +
+    `得分 = 底分 ${q.scored.base} × 2<sup>${got}</sup> = <b>${pts}</b> 分</div>` +
+    `<div class="hint" style="margin-top:6px">${q.ctx.zimo ? '自摸（+1 番）' : '点炮和（不计自摸）'}</div></div>`;
+
+  const d = decOf(toCounts(q.hand), q.openN || 0);
+  html += `<div class="sec"><div class="t"><span class="n">2</span>拆块核对</div>` +
+    blocksHTML(d) + `<div class="fml">${formulaHTML(d, q.openN || 0)}</div>` +
+    `<div class="hint" style="margin-top:6px">和牌牌的向听是 −1。对照拆块可以看出：是不是全刻子（对对胡）、是不是单一花色（清一色）、每组是不是都带么九（全带么）。` +
+    (q.melds && q.melds.length ? ' 4 组副露已单独列出，不在门内拆块里。' : '') + `</div></div>`;
+
+  const ft = q.table || fanTable;             // 用出题时的番表快照，避免中途改设置导致展示错位
+  html += `<div class="sec"><div class="t"><span class="n">3</span>番型速查</div>` +
+    `<table><thead><tr><th>番型</th><th>番数</th><th>怎么认</th></tr></thead><tbody>` +
+    [['平胡', ft.ping_hu, '没有任何其他番型'],
+     ['对对胡', ft.dui_dui_hu, '4 个面子全是刻子'],
+     ['七对', ft.qi_dui, '14 张全部成对'],
+     ['龙七对', ft.long_qi_dui, '七对里有一组 4 张相同（已含第一根）'],
+     ['清一色', ft.qing_yi_se, '全部牌同一个花色'],
+     ['全带么', ft.quan_dai_yao, '每个面子和将都含 1 或 9'],
+     ['断么九', ft.duan_yao_jiu, '完全没有 1 和 9'],
+     ['金钩钓', ft.jin_gou_diao, '4 副露，手上只剩将'],
+     ['根', ft.gen + ' / 个', '4 张相同（含杠）；龙七对的第一根不另计'],
+     ['自摸', ft.zi_mo, '自己摸到的'],
+     ['杠上花', ft.gang_shang_hua, '杠后补张自摸'],
+     ['抢杠胡', ft.qiang_gang, '别人补杠的那张胡牌']]
+      .map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td class="mut">${r[2]}</td></tr>`).join('') +
+    `</tbody></table></div>`;
+
+  $('#detail').innerHTML = html;
+  $('#resultCard').style.display = '';
+  $('#resultCard').classList.add('flash');
+  clearBars();
+}
+
+/* ---------- 拆块渲染 ---------- */
+const _decCache = new Map();
+function decOf(counts, openN) {
+  if (openN === undefined) openN = state.openN;
+  const key = openN + '|' + counts.join('');
+  let v = _decCache.get(key);
+  if (v === undefined) { v = decompose(counts, openN); _decCache.set(key, v); }
+  return v;
+}
+const chip = (txt, cls) => `<span class="bchip ${cls || ''}">${txt}</span>`;
+const NONE = '<span class="none">无</span>';
+
+function blocksHTML(d) {
+  const rows = [];
+  if (d.seven) {
+    rows.push(['对子', d.pairs.length ? d.pairs.map(p => chip(blockName(p), 'pair')).join('') : NONE]);
+  } else {
+    rows.push(['面子', d.melds.length ? d.melds.map(x => chip(blockName(x), 'meld')).join('') : NONE]);
+    rows.push(['搭子', d.taatsu.length ? d.taatsu.map(x => chip(blockName(x), 'taatsu')).join('') : NONE]);
+    rows.push(['将', d.pair ? chip(blockName(d.pair), 'pair') : NONE]);
+  }
+  rows.push(['孤张', d.floats.length ? d.floats.map(t => chip(tileCN(t), 'float')).join('') : NONE]);
+  return rows.map(r => `<div class="blkrow"><div class="k">${r[0]}</div><div class="v">${r[1]}</div></div>`).join('');
+}
+
+function formulaHTML(d, openN) {
+  if (d.seven) return `七对路线：6 − ${d.pairs.length}（已有对数） = <b>${d.shanten}</b> 向听`;
+  const base = 2 * (4 - (openN || 0));
+  return `${base} − 2×${d.m}（面子） − ${d.t}（搭子） − ${d.p}（将） = <b>${d.shanten}</b> 向听`;
+}
+
+function renderBlockPanel() {
+  const p = $('#blockPanel');
+  if (!state.q || !state.q.hand) { p.style.display = 'none'; return; }
+  const openN = state.q.openN !== undefined ? state.q.openN : state.openN;
+  const d = decOf(toCounts(state.q.hand), openN);
+  p.innerHTML = `<div class="blk">` +
+    `<div class="hd">拆块检查（只看结构，不给答案）</div>` + blocksHTML(d) +
+    `<div class="fml">${formulaHTML(d, openN)}</div>` +
+    `<div class="hint" style="margin-top:6px">口诀：<b>向听 = 2×(4 − 副露数) − 2×面子 − 搭子 − 将</b>　|　面子 + 搭子 ≤ 4 − 副露数　|　同一张牌只能用一次</div>` +
+    `</div>`;
+  p.style.display = '';
+}
+
+function showCutResult(q, mine, ok, tied) {
+  const cols = state.aka ? tileEN : tileCN;
+  const c14 = toCounts(q.hand);
+  const d14 = decOf(c14);
+  const best = q.options[0];
+  const cBest = c14.slice(); cBest[best.tile]--;
+  const dBest = decOf(cBest);
+  const cMine = c14.slice(); cMine[mine.tile]--;
+  const dMine = decOf(cMine);
+  const bestSet = tied.map(o => o.tile);
+
+  const head = ok ? `<span class="big ok">✓ 正确</span>`
+                  : `<span class="big bad">✗ 最优解是 ${bestSet.map(cols).join(' / ')}</span>`;
+  $('#verdict').innerHTML = `${head} <span class="mut">你选了 ${cols(mine.tile)}</span>`;
+
+  /* ---- ① 原手牌拆块 ---- */
+  let html = `<div class="sec"><div class="t"><span class="n">1</span>先给这手牌拆块</div>`
+    + blocksHTML(d14) + `<div class="fml">${formulaHTML(d14, state.openN)}</div>`
+    + `<div class="hint" style="margin-top:6px">这一步只回答“我现在离听牌还差几步”，不回答“该打哪张”。</div></div>`;
+
+  /* ---- ② 正解打完 ---- */
+  html += `<div class="sec"><div class="t"><span class="n">2</span>正解「打${cols(best.tile)}」之后</div>`
+    + blocksHTML(dBest) + `<div class="fml">${formulaHTML(dBest, state.openN)}</div>`
+    + `<div class="hint" style="margin-top:8px">有效牌 <b>${best.ukeire}</b> 张：`
+    + (best.eff.length ? best.eff.map(k => `<span class="chip eff">${cols(k)}</span>`).join('') : '<span class="mut">—</span>')
+    + `</div></div>`;
+
+  /* ---- ③ 你选的那张 ---- */
+  if (!ok) {
+    html += `<div class="sec"><div class="t"><span class="n">3</span>你选的「打${cols(mine.tile)}」之后</div>`
+      + blocksHTML(dMine) + `<div class="fml">${formulaHTML(dMine, state.openN)}</div>`
+      + `<div class="hint" style="margin-top:8px">有效牌 <b>${mine.ukeire}</b> 张：`
+      + (mine.eff.length ? mine.eff.map(k => `<span class="chip eff">${cols(k)}</span>`).join('') : '<span class="mut">—</span>')
+      + `</div>`
+      + `<div class="warnbox">和正解比：` + (dMine.shanten > dBest.shanten
+          ? `向听<b>变差了</b>（${dBest.shanten} → ${dMine.shanten}）。注意：你选的这张有效牌看起来有 ${mine.ukeire} 张（比正解还多），但那都是“<b>从 ${dMine.shanten} 向听变 ${dBest.shanten} 向听</b>”的牌，不是“直接听牌”的牌。<br>向听数永远优先于有效牌张数——它量的是“离终点还有几步”，而有效牌只量“这一步能往哪走”。`
+          : `向听一样，但有效牌少 <b>${best.ukeire - mine.ukeire}</b> 张。`) + `</div></div>`;
+  }
+
+  /* ---- ④ 全部打法对比 ---- */
+  let rows = '';
+  q.options.forEach(o => {
+    const cc = c14.slice(); cc[o.tile]--;
+    const d = decOf(cc);
+    const isBest = (o.shanten === q.best.shanten && o.ukeire === q.best.ukeire);
+    const cls = (isBest ? 'top ' : '') + (o.tile === mine.tile ? 'pick' : '');
+    const brk = d.seven ? `对子 ${d.pairs.length}` : `${d.m} / ${d.t} / ${d.p}`;
+    rows += `<tr class="${cls}"><td><b>${cols(o.tile)}</b>${isBest ? ' <span class="ok">★</span>' : ''}</td>`
+      + `<td>${o.shanten === 0 ? '听牌' : o.shanten}</td><td><b>${o.ukeire}</b></td>`
+      + `<td class="mut">${brk}</td>`
+      + `<td class="mut">${d.floats.map(t => cols(t)).join(' ') || '—'}</td></tr>`;
+  });
+  html += `<div class="sec"><div class="t"><span class="n">${ok ? 3 : 4}</span>全部打法对比</div>`
+    + `<table><thead><tr><th>打出</th><th>向听</th><th>有效牌</th>`
+    + `<th title="面子/搭子/将">面/搭/将</th><th>剩下孤张</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  /* ---- ⑤ 留下的孤张还能配什么 ---- */
+  if (!dBest.seven && dBest.floats.length) {
+    let t = '';
+    dBest.floats.forEach(f => {
+      const pot = floatPotential(f, cBest);
+      const sum = pot.reduce((a, b) => a + b.rem, 0);
+      t += `<tr><td><b>${cols(f)}</b></td><td>`
+        + (pot.length ? pot.map(p => `<span class="chip">${cols(p.tile)}(${p.rem})</span>`).join('') : '<span class="mut">—</span>')
+        + `</td><td>${sum}</td></tr>`;
+    });
+    html += `<div class="sec"><div class="t"><span class="n">${ok ? 4 : 5}</span>正解之后，留下的孤张各自还能配什么</div>`
+      + `<table><thead><tr><th>孤张</th><th>能配的牌（括号内是牌墙里还剩几张）</th><th>合计</th></tr></thead><tbody>${t}</tbody></table>`
+      + `<div class="hint" style="margin-top:6px">孤张的价值不看“长得像不像废牌”，而看<b>它还能配几张牌</b>；而且孤张之间会互相影响——打掉一张，旁边那张可能就彻底死了。</div></div>`;
+  }
+
+  /* ---- ⑥ 关键提示 ---- */
+  const hints = [];
+  const worse = [...new Set(q.options.filter(o => o.shanten > q.best.shanten).map(o => o.tile))];
+  if (worse.length) hints.push(`打 <b>${worse.map(cols).join(' / ')}</b> 会让向听掉到 ${q.best.shanten + 1} —— 拆了面子或搭子，直接淘汰（即使它看起来是孤张）。`);
+  const trap = worse.map(t => q.options.find(o => o.tile === t)).filter(o => o && o.ukeire > q.best.ukeire);
+  if (trap.length) hints.push(`<b>小心这个陷阱：</b>打 <b>${trap.map(o => cols(o.tile)).join(' / ')}</b> 的有效牌反而更多（${trap.map(o => o.ukeire).join(' / ')} 张 vs 正解 ${q.best.ukeire} 张），但向听差了 1。那是“让手牌从 ${q.best.shanten + 1} 向听变 ${q.best.shanten} 向听”的牌，不是“让你听牌”的牌。`);
+  const sameSh = q.options.filter(o => o.shanten === q.best.shanten && o.ukeire < q.best.ukeire);
+  if (sameSh.length) hints.push(`同为 ${q.best.shanten} 向听的还有 <b>${sameSh.map(o => cols(o.tile)).join(' / ')}</b>，但有效牌分别少 ${sameSh.map(o => q.best.ukeire - o.ukeire).join(' / ')} 张。`);
+  const allFloat = bestSet.every(t => d14.floats.indexOf(t) >= 0);
+  if (!allFloat) hints.push(`注意：正解里包含<b>不是孤张</b>的牌 —— 说明“拆掉搭子的一端”反而更好，因为剩下那张能和别的牌重新组搭。`);
+  if (bestSet.length > 1) hints.push(`这题有 <b>${bestSet.length}</b> 个并列最优（它们打完后结构等价）。并列时靠<b>场况</b>分胜负：场上已出最多的那张，就该打掉。`);
+  if (!hints.length) hints.push('这手牌的孤张之间差距很小，属于边界题。练的时候不用纠结，把向听算对就够了。');
+
+  const tags = shapeTags(c14);
+  html += `<div class="sec"><div class="t"><span class="n">${ok ? 5 : 6}</span>关键提示</div>`
+    + `<ul style="margin:0;padding-left:20px">${hints.map(h => `<li>${h}</li>`).join('')}</ul>`
+    + (tags.length ? `<div class="hint" style="margin-top:8px">牌型方向：${tags.map(t => `<span class="chip">${t}</span>`).join('')}</div>` : '')
+    + `<div class="hint" style="margin-top:8px">读表顺序：① 向听最小 → ② 有效牌最多 → ③ 好形优先（两面&gt;嵌张&gt;边张&gt;对子） → ④ 才比番型。血战到底里先听先胡通常比番数大更重要。</div>`
+    + `</div>`;
+
+  $('#detail').innerHTML = html;
+  $('#resultCard').style.display = '';
+}
+
+function onPickVoid(s) {
+  if (state.answered) return;
+  state.answered = true; stopTimer();
+  const elapsed = performance.now() - state.t0;
+  const q = state.q;
+  const rows = q.rows;
+  const name = ['万', '条', '筒'];
+  const best = rows[0];
+  const ok = rows.some(r => r.suit === s && r.best);
+  record(ok, elapsed, ok ? null : 'dingque');
+
+  const rs = rows.find(r => !r.best) || rows[1];
+  const why = best.k !== rs.k ? '缺门张数最少'
+    : best.sh !== rs.sh ? '剩余两门向听最低'
+    : best.uke !== rs.uke ? '有效牌张数最多'
+    : best.shape !== rs.shape ? '搭子好形最多' : '并列最优';
+  const body = rows.map(r =>
+    `<tr class="${r.best ? 'top' : ''}${r.suit === s ? ' pick' : ''}">
+       <td><b>缺 ${name[r.suit]}</b>${r.best ? ' <span class="ok">★</span>' : ''}</td>
+       <td>${r.k}</td><td>${r.sh}</td><td>${r.uke}</td><td>${r.shape}</td>
+       <td class="mut">${r.best ? why : '—'}</td></tr>`).join('');
+  $('#verdict').innerHTML = (ok ? '<span class="big ok">✓ 正确</span>' : '<span class="big bad">✗ 更好的选择是 缺 ' + name[best.suit] + '</span>') +
+    ` &nbsp;<span class="mut">你选了 缺 ${name[s]}</span>`;
+  $('#detail').innerHTML =
+    `<table><thead><tr><th>方案</th><th>缺门张数</th><th>剩余向听</th><th>有效牌</th><th>好形分</th><th>为什么推荐</th></tr></thead><tbody>${body}</tbody></table>` +
+    `<div class="hint" style="margin-top:8px">判定顺序（越靠前权重越高）：<b>① 缺门张数 → ② 剩余两门向听 → ③ 有效牌张数 → ④ 搭子好形</b>。
+      定缺后不能更改，整局摸到缺门牌必须立刻打出；缺门牌也不能碰、不能杠。</div>`;
+  clearBars();
+  $('#resultCard').style.display = '';
+  $('#resultCard').classList.add('flash');
+}
+
+function onPickTen(v) {
+  if (state.answered) return;
+  const n = parseInt(v, 10);
+  if (!n || n < 1) return;
+  state.answered = true; stopTimer();
+  const elapsed = performance.now() - state.t0;
+  const u = state.q.u;
+  const ok = n === u.list.length;
+  record(ok, elapsed, ok ? null : 'tenpai');
+
+  const cols = state.aka ? tileEN : tileCN;
+  $('#verdict').innerHTML = (ok ? '<span class="big ok">✓ 正确</span>' : `<span class="big bad">✗ 实际听 ${u.list.length} 种</span>`) +
+    ` &nbsp;<span class="mut">你填了 ${n}</span>`;
+  $('#detail').innerHTML =
+    `<div class="res" style="margin-top:6px">听牌：${u.list.map(k => `<span class="chip eff">${cols(k)}</span>`).join('')}</div>` +
+    `<div class="hint" style="margin-top:6px">共 <b>${u.list.length}</b> 种、<b>${u.total}</b> 张（已扣除手上持有的张数）。
+      血战到底里「听张数 × 剩余张数」比「听什么番」更值钱：胡一次就结算一次。</div>`;
+  clearBars();
+  $('#resultCard').style.display = '';
+  $('#resultCard').classList.add('flash');
+}
+
+/* ---------- 键盘 ---------- */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') {
+    if (e.key === 'Enter') { e.target.blur(); document.querySelector('#tenBar button')?.click(); }
+    return;
+  }
+  if (e.key === ' ') { e.preventDefault(); state.custom = null; clearBars(); newQuestion(); return; }
+  if ((state.mode === 'cut' || state.mode === 'def') && !state.answered) {
+    const i = KEYMAP.indexOf(e.key.toLowerCase());
+    if (i >= 0) {
+      const el = document.querySelector(`#hand .tile[data-pos="${i}"]`);
+      if (el) el.click();
+    }
+  }
+  if (state.mode === 'void' && !state.answered) {
+    const i = ['1', '2', '3'].indexOf(e.key);
+    if (i >= 0) document.querySelectorAll('#voidBar button')[i]?.click();
+  }
+  if (state.mode === 'fan' && !state.answered) {
+    const i = '0123456789'.indexOf(e.key);
+    if (i >= 0) document.querySelectorAll('#fanBar button')[i]?.click();
+  }
+});
+
+/* ---------- 控件 ---------- */
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  state.mode = b.dataset.mode;
+  document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === b));
+  state.custom = null;
+  clearBars(); newQuestion();
+});
+document.querySelectorAll('[data-diff]').forEach(b => b.onclick = () => {
+  state.diff = +b.dataset.diff;
+  document.querySelectorAll('[data-diff]').forEach(x => x.classList.toggle('on', x === b));
+  clearBars(); newQuestion();
+});
+document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => {
+  state.openN = +b.dataset.open;
+  document.querySelectorAll('[data-open]').forEach(x => x.classList.toggle('on', x === b));
+  clearBars(); newQuestion();
+});
+$('#tVoid').onclick = e => {
+  state.needVoid = !state.needVoid;
+  e.target.classList.toggle('on', state.needVoid);
+  e.target.textContent = state.needVoid ? '必须缺一门' : '不限花色';
+  clearBars(); newQuestion();
+};
+$('#tRiver').onclick = e => {
+  state.withRiver = !state.withRiver;
+  e.target.classList.toggle('on', state.withRiver);
+  clearBars(); newQuestion();
+};
+$('#tAka').onclick = e => {
+  state.aka = !state.aka;
+  e.target.classList.toggle('on', state.aka);
+  $('#ttl').textContent = state.aka ? 'Sequence Drill' : '川麻·血战到底牌效率训练器';
+  $('#stl').textContent = state.aka
+    ? 'offline single-file drill'
+    : '川麻血战到底 · 单文件离线 · 键盘可操作  |  目标：把「该打哪张」练成条件反射（单副手牌训练，不模拟整局流程）';
+  renderWrongBook();
+  newQuestion();
+};
+$('#btnNew').onclick = () => { clearBars(); newQuestion(); };
+$('#btnBlocks').onclick = e => {
+  const p = $('#blockPanel');
+  if (p.style.display === 'none') { renderBlockPanel(); e.target.classList.add('on'); }
+  else { p.style.display = 'none'; e.target.classList.remove('on'); }
+};
+$('#btnReset').onclick = () => { if (confirm('清空本机统计？')) { stats = fresh(); saveStats(); renderStats(); } };
+$('#btnLoad').onclick = () => {
+  const hand = parseHandText($('#loadInput').value);
+  if (!hand) { $('#loadMsg').innerHTML = '<span class="bad">解析失败：请检查格式</span>'; return; }
+  state.custom = hand;
+  $('#loadMsg').innerHTML = `<span class="ok">已载入 ${hand.length} 张：${hand.map(tileCN).join(' ')}</span>`;
+  clearBars(); newQuestion();
+};
+$('#btnLoadClear').onclick = () => {
+  state.custom = null; $('#loadInput').value = ''; $('#loadMsg').textContent = '';
+  clearBars(); newQuestion();
+};
+
+/* 初始化 */
+(function init() {
+  state.tenWaits = 'any';
+  renderFanCfg();
+  renderWrongBook();
+  renderStats();
+  newQuestion();
+})();
+</script>
+</body>
+</html>
