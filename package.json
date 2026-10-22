@@ -9,7 +9,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node tools/test-core.js && node tools/test-fan.js && node tools/verify-shanten.js"
+    "test": "node tools/test-core.js && node tools/test-fan.js && node tools/verify-shanten.js && node --test tests/engine.test.mjs"
   },
   "keywords": [
     "mahjong",
