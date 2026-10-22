@@ -16,6 +16,7 @@ const tileCN = k => rankOf(k) + SUIT_CN[suitOf(k)];
 const tileEN = k => rankOf(k) + SUIT_EN[suitOf(k)];
 
 const _stdCache = new Map();
+const STD_CACHE_MAX = 200000;
 
 /* 标准型向听数：need 个面子 + 1 雀头（need = 4 − 副露数）
    公式 shanten = 2×need − 2×面子 − min(搭子, need−面子) − 雀头
@@ -69,6 +70,7 @@ function shantenStd(counts, need) {
   }
   dfs(0, 0, 0, false, rem);
 
+  if (_stdCache.size >= STD_CACHE_MAX) _stdCache.clear();   // 防止长时间对局 / 自对弈时缓存无限增长
   _stdCache.set(key, best);
   return best;
 }
