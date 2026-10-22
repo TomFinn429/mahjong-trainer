@@ -7,6 +7,6 @@ const C = globalThis.MJCore;
 export default C;
 export const {
   shanten, shantenStd, shanten7, toCounts, ukeire, suitOf, rankOf, tileCN, tileEN, groupSuits,
-  decompose, voidEval, isWinHand, detectYaku, scoreYaku, parseHandText,
+  decompose, blockName, floatPotential, voidEval, isWinHand, detectYaku, scoreYaku, parseHandText,
   DEFAULT_FAN, FAN_LABEL, FAN_ORDER
 } = C;
