@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>川麻 AI 对局</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#1f2430; --mut:#6b7280; --line:#e3e6eb; --card:#fff;
+    --ok:#2f855a; --okbg:#e6f6ec; --bad:#c53030; --badbg:#fdeaea;
+    --acc:#2b6cb0; --accbg:#eaf2fb; --warn:#b7791f; --warnbg:#fdf6e7;
+    --felt:#eef3ef; --tile:#fff; --tileline:#d3d8e0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#14171c; --fg:#e5e7eb; --mut:#9aa3b2; --line:#2c323c; --card:#1b1f26;
+      --okbg:#173326; --badbg:#3a1d1d; --accbg:#1b2c42; --warnbg:#3a2f16; --felt:#18221c; --tile:#f4f1ea; --tileline:#8b8f96; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);
+       font:14px/1.6 "Microsoft YaHei","PingFang SC",system-ui,-apple-system,Segoe UI,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:14px 16px 48px}
+  h1{font-size:17px;margin:0;font-weight:700}
+  .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .sub{color:var(--mut);font-size:12px}
+  a{color:var(--acc)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .bar+.bar{margin-top:8px}
+  .lbl{color:var(--mut);font-size:12px}
+  button,select,input{font:inherit;font-size:13px;color:var(--fg)}
+  button{padding:5px 11px;border:1px solid var(--line);background:var(--card);border-radius:7px;cursor:pointer}
+  button:hover{border-color:#9aa3b2}
+  button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);font-weight:600}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  button.hot{background:var(--warn);border-color:var(--warn);color:#fff;font-weight:600}
+  button:disabled{opacity:.45;cursor:default}
+  select,input[type=text],input[type=password],input[type=number]{padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+  input[type=text],input[type=password]{min-width:0}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;align-items:start}
+  @media (max-width: 980px){ .grid{grid-template-columns:minmax(0,1fr)} }
+
+  /* 牌桌 */
+  .table{background:var(--felt);border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;
+         grid-template-columns:1fr 2fr 1fr;grid-template-rows:auto auto auto;gap:8px}
+  .seat{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:7px 9px;min-width:0}
+  .seat.turn{border-color:var(--acc);box-shadow:0 0 0 2px var(--accbg)}
+  .seat.won{opacity:.75}
+  .seat h3{margin:0 0 4px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .seat-top{grid-column:2;grid-row:1}
+  .seat-left{grid-column:1;grid-row:2}
+  .seat-right{grid-column:3;grid-row:2}
+  .center{grid-column:2;grid-row:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+          border:1px dashed var(--line);border-radius:9px;padding:8px;text-align:center;min-height:120px}
+  .seat-me{grid-column:1 / span 3;grid-row:3}
+  @media (max-width: 640px){
+    .table{grid-template-columns:1fr 1fr;grid-template-rows:auto}
+    .seat-top,.seat-left,.seat-right,.center,.seat-me{grid-column:auto;grid-row:auto}
+    .center,.seat-me{grid-column:1 / span 2}
+  }
+  .badge{font-size:11px;padding:0 6px;border-radius:5px;border:1px solid var(--line);color:var(--mut);font-weight:400}
+  .badge.void{border-color:#d69e2e;color:var(--warn)}
+  .badge.win{border-color:var(--ok);color:var(--ok)}
+  .badge.threat{border-color:var(--bad);color:var(--bad)}
+  .river{display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;min-height:22px}
+  .melds{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .meld{display:flex;gap:1px}
+
+  .tile{position:relative;width:40px;height:54px;border:1px solid var(--tileline);border-radius:6px;background:var(--tile);
+        display:inline-flex;flex-direction:column;align-items:center;justify-content:center;user-select:none;
+        box-shadow:0 1px 2px rgba(20,30,50,.08);color:#1f2430;transition:transform .06s}
+  .tile .n{font-size:18px;font-weight:700;line-height:1.05}
+  .tile .s{font-size:10px;color:#6b7280;line-height:1}
+  .tile.w .n{color:#1a365d}.tile.t .n{color:#22543d}.tile.d .n{color:#7b341e}
+  .tile.sm{width:22px;height:30px;border-radius:4px}
+  .tile.sm .n{font-size:12px}.tile.sm .s{font-size:8px}
+  .tile.back{background:linear-gradient(135deg,#4a7c59,#2f5d3f);border-color:#2f5d3f}
+  .tile.click{cursor:pointer}
+  .tile.click:hover{transform:translateY(-3px)}
+  .tile.sel{outline:2px solid var(--acc);outline-offset:1px;transform:translateY(-6px)}
+  .tile.void{background:#fbeee0}
+  .tile.rec{box-shadow:0 0 0 2px var(--ok)}
+  .tile.hl{box-shadow:0 0 0 2px var(--acc)}
+  .tile.last{box-shadow:0 0 0 2px var(--warn)}
+  .tile.claimed{opacity:.35}
+  .tile.huby{box-shadow:0 0 0 2px var(--bad)}
+  .tile.dimmed{opacity:.45}
+  .hand{display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end;margin:6px 0}
+  .hand .gap{width:12px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;min-height:32px;align-items:center}
+  .hint{color:var(--mut);font-size:12px}
+
+  /* 分析面板 */
+  table.cand{width:100%;border-collapse:collapse;font-size:12px}
+  table.cand th,table.cand td{text-align:left;padding:4px 5px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.cand th{color:var(--mut);font-weight:600;font-size:11px}
+  table.cand tr.best td{background:var(--okbg)}
+  table.cand tr:hover td{background:var(--accbg)}
+  .dbar{display:inline-block;height:6px;border-radius:3px;background:var(--bad);vertical-align:middle}
+  .alerts{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+  .alert{font-size:12px;padding:3px 8px;border-radius:6px;background:var(--accbg)}
+  .alert.key{background:var(--okbg)}
+  .alert.warn{background:var(--warnbg)}
+  .opp{font-size:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:2px 0}
+  .meter{display:inline-block;width:60px;height:6px;border-radius:3px;background:var(--line);overflow:hidden;vertical-align:middle}
+  .meter i{display:block;height:100%;background:var(--bad)}
+
+  /* LLM */
+  .llm-out{white-space:normal;font-size:13px;line-height:1.7;min-height:60px;max-height:440px;overflow:auto;
+           border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px;background:var(--bg)}
+  .llm-out p{margin:0 0 6px}
+  .llm-out ul{margin:0 0 6px;padding-left:18px}
+  .reason{color:var(--mut);font-size:12px;white-space:pre-wrap;max-height:120px;overflow:auto;border-left:3px solid var(--line);padding-left:8px;margin-top:6px}
+  .warnbox{font-size:12px;color:var(--warn);margin-top:6px}
+  details summary{cursor:pointer;color:var(--mut);font-size:12px}
+  .form{display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 8px;align-items:center;margin-top:8px}
+  .form .full{grid-column:1 / span 2}
+  .log{font-size:12px;color:var(--mut);max-height:180px;overflow:auto;line-height:1.6}
+  .result table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .result td,.result th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+  .pos{color:var(--ok);font-weight:700}.neg{color:var(--bad);font-weight:700}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(183,121,31,.6)}100%{box-shadow:0 0 0 8px rgba(183,121,31,0)}}
+  .pulse{animation:pulse 1.2s infinite}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>川麻 AI 对局 · 血战到底</h1>
+      <div class="sub">你 + 三家电脑；局势分析由程序计算，AI 讲解只解释程序给出的数据。 <a href="index.html">← 牌效训练器</a></div>
+    </div>
+    <div class="sub" id="totalScore"></div>
+  </div>
+
+  <div class="card">
+    <div class="bar">
+      <span class="lbl">电脑难度</span>
+      <select id="level"><option value="1">入门</option><option value="2">进阶</option><option value="3" selected>高手</option></select>
+      <span class="lbl">节奏</span>
+      <select id="speed"><option value="150">快</option><option value="450" selected>中</option><option value="900">慢</option></select>
+      <button id="optExchange" class="on" title="开局换三张">换三张</button>
+      <button id="optPractice" title="出牌前隐藏推荐和综合分，打完再对照">练习模式</button>
+      <button id="optReveal" title="显示电脑手牌（作弊 / 复盘用）">明牌</button>
+      <span class="lbl">种子</span>
+      <input id="seed" type="text" size="9" placeholder="随机">
+      <button id="newGame" class="primary">新开一局</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="table" id="table">
+        <div class="seat seat-top" id="seat2"></div>
+        <div class="seat seat-left" id="seat3"></div>
+        <div class="center" id="center"></div>
+        <div class="seat seat-right" id="seat1"></div>
+        <div class="seat seat-me" id="seat0"></div>
+      </div>
+      <div class="card result" id="result" hidden></div>
+      <div class="card">
+        <details>
+          <summary>对局记录</summary>
+          <div class="log" id="log"></div>
+        </details>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" id="analysis"></div>
+
+      <div class="card">
+        <div class="bar" style="justify-content:space-between">
+          <b style="font-size:13px">AI 讲解</b>
+          <span class="hint" id="llmStatus">未配置</span>
+        </div>
+        <div class="bar" style="margin-top:8px">
+          <button id="explain" class="primary" disabled>讲解这一手</button>
+          <select id="detail"><option value="brief">简短</option><option value="normal" selected>标准</option><option value="deep">详细</option></select>
+          <button id="stopLLM" hidden>停止</button>
+          <label class="hint"><input type="checkbox" id="autoKey"> 关键时刻自动讲解</label>
+        </div>
+        <div class="bar"><input type="text" id="question" placeholder="可选：问一个具体问题，如「为什么不碰？」" style="flex:1"></div>
+        <div class="llm-out" id="llmOut"><span class="hint">配置好服务商后，在你的回合点「讲解这一手」。出现关键时刻（听牌、可碰杠、对手威胁高、后巡）时按钮会闪烁提醒。</span></div>
+        <div class="warnbox" id="llmWarn"></div>
+        <details id="reasonBox" hidden><summary>模型思考过程</summary><div class="reason" id="llmReason"></div></details>
+
+        <details id="llmCfg" style="margin-top:10px">
+          <summary>服务商设置</summary>
+          <div class="form">
+            <span class="lbl">服务商</span><select id="provider"></select>
+            <span class="lbl">Base URL</span><input type="text" id="baseURL" placeholder="https://.../v1">
+            <span class="lbl">模型</span>
+            <div class="bar" style="flex-wrap:nowrap"><input type="text" id="model" list="modelList" style="flex:1"><datalist id="modelList"></datalist><button id="fetchModels">获取模型</button></div>
+            <span class="lbl">API key</span><input type="password" id="apiKey" autocomplete="off" placeholder="只保存在本机浏览器">
+            <span></span><label class="hint"><input type="checkbox" id="rememberKey"> 记住 key（存 localStorage；不勾选则关闭页面即清除）</label>
+            <span></span><label class="hint"><input type="checkbox" id="viaProxy"> 经本地代理（需用 <code>node server.js</code> 打开本页）</label>
+            <div class="full warnbox" id="providerNote"></div>
+            <div class="full bar"><button id="testLLM">测试连接</button><button id="clearKey">清除 key</button></div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="src/ui/table.mjs"></script>
+</body>
+</html>
