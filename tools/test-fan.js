@@ -1,14 +1,8 @@
 /* 番型识别 / 计分 / 文本解析 / 副露向听 的自检
    运行：node tools/test-fan.js */
-const fs = require('fs');
 const path = require('path');
-const Module = require('module');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const src = html.match(/\/\/ __CORE_START__([\s\S]*?)\/\/ __CORE_END__/)[1];
-const mod = new Module('c');
-mod._compile(src, 'c.js');
-const C = mod.exports;
+const C = require(path.join(__dirname, '..', 'src', 'core', 'mj-core.js'));
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => {

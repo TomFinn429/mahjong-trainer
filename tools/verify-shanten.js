@@ -1,16 +1,10 @@
-/* 独立参考实现：用「距离定义」算向听，和 index.html 里的递归分解对照
+/* 独立参考实现：用「距离定义」算向听，和 src/core/mj-core.js 里的递归分解对照
    定义：shanten = (补出某个和牌型还缺几张牌) - 1
    和牌型 = 4 面子 + 1 将，或 七对（4 张算两对）
    运行：node tools/verify-shanten.js */
-const fs = require('fs');
 const path = require('path');
-const Module = require('module');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const src = html.match(/\/\/ __CORE_START__([\s\S]*?)\/\/ __CORE_END__/)[1];
-const mod = new Module('c');
-mod._compile(src, 'c.js');
-const C = mod.exports;
+const C = require(path.join(__dirname, '..', 'src', 'core', 'mj-core.js'));
 
 /* ---------- 所有可能的面子 ---------- */
 const MELDS = [];

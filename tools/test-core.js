@@ -1,16 +1,8 @@
-/* 从 index.html 抽出核心算法并在 Node 里做自检
+/* 核心算法（src/core/mj-core.js）的 Node 自检
    运行：node tools/test-core.js   （在 mahjong-trainer 目录下） */
-const fs = require('fs');
 const path = require('path');
-const Module = require('module');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const m = html.match(/\/\/ __CORE_START__([\s\S]*?)\/\/ __CORE_END__/);
-if (!m) { console.error('找不到核心代码块'); process.exit(1); }
-
-const coreMod = new Module('mj-core');
-coreMod._compile(m[1], 'mj-core.js');
-const C = coreMod.exports;
+const C = require(path.join(__dirname, '..', 'src', 'core', 'mj-core.js'));
 
 let pass = 0, fail = 0;
 function t(name, got, want) {
