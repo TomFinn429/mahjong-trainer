@@ -5,12 +5,14 @@
 import { shanten, toCounts, suitOf, voidEval, ukeire } from '../core/core.mjs';
 import { pending, submit, viewFor } from '../game/engine.mjs';
 import { nextRand, randInt } from '../game/rng.mjs';
-import { evaluateDiscards, evaluateClaim, evaluateTurnGang, refineByLookahead } from './analyzer.mjs';
+import { evaluateDiscards, evaluateClaim, evaluateTurnGang, refineByLookahead, withQingBias } from './analyzer.mjs';
 
 export const LEVEL_NAME = { 1: '入门', 2: '进阶', 3: '高手' };
 
+/* 高手默认策略来自复式自对弈（见 README「电脑难度实测」）：
+   一步前瞻 + 清一色倾向有显著收益；危险度防守在当前对手池里没有收益，默认关闭 */
 export function createBot(level, seed, opts) {
-  return { level, rng: (seed >>> 0) || 1, opts: { defense: true, balance: true, qing: true, pongEqual: true, lookahead: true, ...(opts || {}) } };
+  return { level, rng: (seed >>> 0) || 1, opts: { defense: false, balance: true, qing: true, pongEqual: false, lookahead: true, ...(opts || {}) } };
 }
 
 export function decide(bot, view) {
@@ -64,17 +66,6 @@ export function decide(bot, view) {
     pick = bot.opts.qing ? withQingBias(rows, me) : rows[0];
   }
   return { type: 'discard', tile: pick.tile };
-}
-
-/* 高手：一门牌明显占优时倾向做清一色（2 番 = 4 倍），优先打掉另一门，只要向听不变差 */
-function withQingBias(rows, me) {
-  const n = [0, 1, 2].map(s => (s === me.voidSuit ? -1 : me.hand.filter(t => suitOf(t) === s).length + me.melds.filter(m => suitOf(m.tile) === s).length * 3));
-  const major = n.indexOf(Math.max(...n));
-  const minor = [0, 1, 2].find(s => s !== major && s !== me.voidSuit);
-  if (minor === undefined || n[major] < 9 || me.melds.some(m => suitOf(m.tile) === minor)) return rows[0];
-  const best = rows[0];
-  const alt = rows.filter(r => suitOf(r.tile) === minor && r.shanten === best.shanten && r.score >= best.score - 8)[0];
-  return alt || best;
 }
 
 function fewestSuit(hand) {

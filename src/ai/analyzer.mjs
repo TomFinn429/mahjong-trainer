@@ -130,6 +130,17 @@ export function refineByLookahead(view, rows, maxCand = 4) {
   return rows;
 }
 
+/* 高手：一门牌明显占优时倾向做清一色（2 番 = 4 倍），优先打掉另一门，只要向听不变差 */
+export function withQingBias(rows, me) {
+  const n = [0, 1, 2].map(s => (s === me.voidSuit ? -1 : me.hand.filter(t => suitOf(t) === s).length + me.melds.filter(m => suitOf(m.tile) === s).length * 3));
+  const major = n.indexOf(Math.max(...n));
+  const minor = [0, 1, 2].find(s => s !== major && s !== me.voidSuit);
+  if (minor === undefined || n[major] < 9 || me.melds.some(m => suitOf(m.tile) === minor)) return rows[0];
+  const best = rows[0];
+  const alt = rows.filter(r => suitOf(r.tile) === minor && r.shanten === best.shanten && r.score >= best.score - 8)[0];
+  return alt || best;
+}
+
 /* 碰 / 明杠 / 胡 的对比 */
 export function evaluateClaim(view) {
   const me = meOf(view);
@@ -212,10 +223,14 @@ export function analyze(view) {
   }
 
   if (view.phase === 'turn' && view.turn === view.seat && view.actions.some(a => a.type === 'discard')) {
-    const ev = evaluateDiscards(view);
-    out.stance = ev.stance;
-    out.maxThreat = +ev.maxThreat.toFixed(2);
+    // 排序与高手电脑同口径（不含防守项）；攻守判断只作为提示
+    const ev = evaluateDiscards(view, { defense: false });
+    const st = stanceOf(Math.min(...ev.rows.map(r => r.shanten)), ev.threats, view.wallCount);
+    out.stance = st.stance;
+    out.maxThreat = +st.maxThreat.toFixed(2);
     refineByLookahead(view, ev.rows);
+    const q = withQingBias(ev.rows, me);
+    if (q !== ev.rows[0]) { ev.rows.splice(ev.rows.indexOf(q), 1); ev.rows.unshift(q); q.qingBias = true; }
     out.candidates = ev.rows.map((r, i) => ({ id: `c${i + 1}`, ...r }));
     out.recommend = out.candidates[0] ? { action: 'discard', tile: out.candidates[0].tile, id: 'c1' } : null;
     const d = decompose(usable(toCounts(me.hand), me.voidSuit), me.melds.length);
@@ -232,7 +247,7 @@ export function analyze(view) {
     const best = out.candidates[0];
     if (best && best.shanten === 0 && !best.voidLeft) out.alerts.push({ level: 'key', code: 'tenpai', text: `打 ${tileCN(best.tile)} 可听牌` });
     else if (best && best.shanten === 1) out.alerts.push({ level: 'info', code: 'oneShanten', text: '一向听' });
-    if (ev.stance === 'fold') out.alerts.push({ level: 'key', code: 'fold', text: '对手威胁高、自己进度慢，建议转守' });
+    if (st.stance === 'fold') out.alerts.push({ level: 'warn', code: 'fold', text: '对手威胁高、自己进度慢：可参考危险度列考虑防守（估计值）' });
   } else if ((view.phase === 'claim' || view.phase === 'robGang') && view.actions.length) {
     out.claim = evaluateClaim(view);
     out.alerts.push({ level: 'key', code: 'claim', text: `可以${view.actions.filter(a => a.type !== 'pass').map(a => ({ hu: '胡', pong: '碰', minggang: '杠' })[a.type]).join(' / ')} ${tileCN(out.claim.tile)}` });
