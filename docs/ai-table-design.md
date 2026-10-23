@@ -22,7 +22,8 @@ src/core/mj-core.js     向听 / 有效牌 / 和牌判定 / 番型 / 计分（�
 src/core/core.mjs       ES 模块包装
 src/game/rng.mjs        可设种子的随机数（mulberry32）
 src/game/rules.mjs      规则开关与默认值
-src/game/engine.mjs     对局状态机：纯数据状态 + 事件日志，可按种子重放
+src/game/engine.mjs     对局状态机：纯数据状态 + 事件日志 + 决定历史，可按种子重放
+src/game/record.mjs     牌谱导出 / 重放校验 / 决策样本（格式见 docs/game-record.md）
 src/ai/danger.mjs       危险度 / 对手威胁估计（电脑高手与分析器共用）
 src/ai/bots.mjs         三档电脑
 src/ai/analyzer.mjs     局势分析（只用玩家可见信息）
@@ -116,7 +117,7 @@ viewFor(g, seat)      // 该座位可见的信息
 代码中保留为可选项（`createBot(3, seed, { defense: true })`）。分析器的推荐与高手电脑同口径，
 危险度和「对手威胁高」只作为参考信息显示。
 
-用自对弈（固定种子）验证 高手 > 进阶 > 入门 的平均得分。
+用自对弈（固定种子）验证 高手 > 进阶 > 入门 的平均得分。工具：`tools/duplicate.mjs`。
 
 ## 危险度（估计值，界面明确标注「估计」）
 

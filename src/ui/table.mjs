@@ -4,6 +4,7 @@
 import { suitOf, rankOf, tileCN, FAN_LABEL } from '../core/core.mjs';
 import { createGame, pending, submit, viewFor } from '../game/engine.mjs';
 import { createBot, decide, runBots, LEVEL_NAME } from '../ai/bots.mjs';
+import { exportRecord } from '../game/record.mjs';
 import { analyze, isKeyMoment } from '../ai/analyzer.mjs';
 import { PROVIDERS, providerById } from '../llm/providers.mjs';
 import { chatStream, listModels } from '../llm/client.mjs';
@@ -415,7 +416,21 @@ function renderResult() {
     (settle ? `<div class="hint" style="margin-top:6px">流局结算：${esc(settle)}</div>` : '') +
     '<div class="bar" style="margin-top:8px"></div>';
   el.querySelector('.bar').appendChild(btn('下一局', 'primary', () => { $('#seed').value = ''; newGame(); }));
+  el.querySelector('.bar').appendChild(btn('下载牌谱', '', downloadRecord, '保存本局可重放的 JSON 牌谱（复盘 / 统计用）'));
   el.hidden = false;
+}
+
+/* 牌谱：种子 + 规则 + 每个决定，格式见 docs/game-record.md */
+function downloadRecord() {
+  const g = S.g;
+  const players = S.bots.map(b => (b ? { kind: 'bot', level: b.level, opts: b.opts } : { kind: 'human' }));
+  const rec = exportRecord(g, { players, seedText: g.seedText });
+  const url = URL.createObjectURL(new Blob([JSON.stringify(rec)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `xuezhan-${rec.createdAt.replace(/[:.]/g, '-')}-${String(g.seedText || g.seed).replace(/[^\w-]/g, '_')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function renderTotals() {

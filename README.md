@@ -31,6 +31,7 @@ npm start            # 等同于 node server.js，然后打开 http://127.0.0.1:
 | 电脑三档 | **入门**：向听优先，带随机失误，能碰就碰<br>**进阶**：向听 → 有效牌（扣除场上可见牌）<br>**高手**：进阶基础上再加一步前瞻（好形）和听牌质量（剩余张数 × 番数） |
 | 局势分析 | 每次轮到你时由程序计算：候选打法的向听、有效牌、听牌张数和番数、危险度估计、综合分；对手的缺门、威胁估计、是否疑似清一色；关键时刻提醒 |
 | 练习模式 | 出牌前隐藏推荐和综合分，打完再显示「你打的是第几名」 |
+| 牌谱 | 每局结束可「下载牌谱」（JSON），能按种子完整重放；格式见 [docs/game-record.md](docs/game-record.md) |
 | AI 讲解 | 填 API key 后点「讲解这一手」，流式输出。关键时刻（听牌、可碰杠胡、对手威胁高、后巡、缺门未清）按钮会闪烁，也可以设为自动讲解 |
 
 ### 设计原则：引擎负责计算，大模型只负责讲解
@@ -336,6 +337,7 @@ node tools/verify-shanten.js  # 用「距离定义」的独立实现做交叉验
 node tools/test-fan.js        # 58 项：和牌判定、番型识别、计分、文本解析、副露向听、牌河扣减、出题器
 node --test tests/engine.test.mjs   # 对局引擎：换三张、定缺、碰杠、一炮多响、呼叫转移、抢杠、过手胡、流局结算、300 局不变量
 node --test tests/bots.test.mjs     # 电脑合法性、难度回归（复式）、分析器、危险度
+node --test tests/record.test.mjs   # 牌谱导出 / 重放 / 篡改检测 / 决策样本不泄露别家手牌
 node --test tests/llm.test.mjs      # SSE 解析、流式客户端、提示词、讲解校验、本地代理安全
 ```
 
@@ -353,18 +355,20 @@ mahjong-trainer/
 ├── src/
 │   ├── core/mj-core.js   # 向听 / 有效牌 / 和牌 / 番型 / 计分（训练器与对局共用）
 │   ├── core/core.mjs     # 上面的 ES 模块入口
-│   ├── game/             # 对局引擎（engine）、规则默认值（rules）、种子随机数（rng）
+│   ├── game/             # 对局引擎（engine）、规则默认值（rules）、种子随机数（rng）、牌谱（record）
 │   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger）
 │   ├── llm/              # 服务商、流式客户端、提示词与讲解校验
 │   └── ui/table.mjs      # 对局界面
-├── tests/                # node:test 测试（引擎 / 电脑 / LLM）
+├── tests/                # node:test 测试（引擎 / 电脑 / 牌谱 / LLM）
 ├── docs/ai-table-design.md  # AI 对局设计与规则口径（含每条规则的出处）
+├── docs/game-record.md   # 牌谱格式
 ├── docs/screenshot.png   # 界面预览
 ├── .github/workflows/    # GitHub Actions：Node 18/20/22 跑自检
 └── tools/
     ├── test-core.js      # 向听 / 定缺 / 出题器自检
     ├── test-fan.js       # 和牌判定 / 番型 / 计分 / 文本 / 副露 / 牌河 自检
-    └── verify-shanten.js # 向听的独立实现交叉验证
+    ├── verify-shanten.js # 向听的独立实现交叉验证
+    └── duplicate.mjs     # 复式自对弈：比较两种电脑配置，多线程，可导出牌谱 JSONL
 ```
 
 ## 许可

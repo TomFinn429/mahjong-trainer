@@ -3,6 +3,7 @@
    - 状态是纯数据（可 JSON 序列化），随机数状态也在里面：同种子 + 同决策序列 = 同一局
    - 推进方式：pending(g) 看谁要做决定 → submit(g, seat, action) 提交 → 齐了自动推进
    - 所有变化写入 g.log 事件流；viewFor(g, seat) 只给出该座位可见的信息
+   - 每个提交的决定按顺序写入 g.history：种子 + 规则 + history 就能完整重放（牌谱见 record.mjs）
    牌编号：0-8 万 / 9-17 条 / 18-26 筒（与 mj-core 一致）
    ============================================================ */
 import { isWinHand, detectYaku, scoreYaku, shanten, toCounts, suitOf } from '../core/core.mjs';
@@ -33,6 +34,7 @@ export function createGame(opts = {}) {
     winCount: 0,
     firstRound: true,      // 地胡判定：还没有任何人碰杠（配合「闲家第一次摸牌」）
     log: [],
+    history: [],           // 按提交顺序的决定 { seq, phase, seat, action }，seq = 提交时的事件数
     result: null
   };
   for (let s = 0; s < SEATS; s++) {
@@ -71,6 +73,7 @@ export function submit(g, seat, action) {
   validate(g, seat, action, legal);
   g.decisions[seat] = action;
   const mark = g.log.length;
+  g.history.push({ seq: mark, phase: g.phase, seat, action: JSON.parse(JSON.stringify(action)) });
   if (Object.keys(g.waiting).every(s => s in g.decisions)) resolve(g);
   return g.log.slice(mark);
 }
