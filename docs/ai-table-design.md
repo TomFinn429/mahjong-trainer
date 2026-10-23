@@ -24,7 +24,9 @@ src/game/rng.mjs        可设种子的随机数（mulberry32）
 src/game/rules.mjs      规则开关与默认值
 src/game/engine.mjs     对局状态机：纯数据状态 + 事件日志 + 决定历史，可按种子重放
 src/game/record.mjs     牌谱导出 / 重放校验 / 决策样本（格式见 docs/game-record.md）
-src/ai/danger.mjs       危险度 / 对手威胁估计（电脑高手与分析器共用）
+src/ai/danger.mjs       启发式危险度 / 对手威胁估计
+src/ai/danger-features.mjs  学习型危险度的特征（训练与预测共用）
+src/ai/danger-model.mjs 学习型危险度推理；权重 danger-weights.mjs 由 tools/py/train_danger.py 生成
 src/ai/montecarlo.mjs   蒙特卡洛前瞻：和牌率 / 期望得分估计
 src/ai/bots.mjs         三档电脑
 src/ai/analyzer.mjs     局势分析（只用玩家可见信息）
@@ -146,10 +148,22 @@ viewFor(g, seat)      // 该座位可见的信息
 
 ## 危险度（估计值，界面明确标注「估计」）
 
+两套实现，接口相同（`allThreats` / `tileDanger`），`evaluateDiscards(view, { dangerModel })` 选用：
+
+**启发式**（`danger.mjs`，电脑防守选项的默认）：
+
 - 对手已胡：不再有威胁。
 - 对手缺门的牌：对该对手 **绝对安全**（川麻特有，最可靠的信息）。
-- 可见张数（牌河 + 副露 + 自己手牌）达到 4：绝对安全。
+- 可见张数达到 3：对手手里最多 1 张，对倒 / 单钓的可能小，危险度打 6 折。注意即使 4 张全可见也**不**绝对安全：对手可能是两面 / 嵌张 / 边张在等这张。
 - 其他：按牌的位置（中张 > 边张 > 幺九）、可见张数、对手威胁（巡目、副露数、是否已打完缺门）加权。
+
+**学习型**（`danger-model.mjs`，分析面板显示用）：
+
+- 听牌模型：给定对手的巡目、牌河、副露、缺门进度等，预测他此刻听牌的概率（逻辑回归）；
+- 放炮模型：再加上这张牌的位置、可见张数、对手打过的同牌 / 筋牌 / 邻牌、该花色在牌河里的比例等，预测打出后被他胡的概率（LightGBM）；
+- 对手缺门花色的牌、已胡的对手仍按规则直接取 0；多家合成：1 − Π(1 − p)；
+- 数据流：自对弈牌谱 → `tools/export-danger-data.mjs`（特征来自 `viewFor`，标签来自重放时的全知状态）→ `tools/py/train_danger.py` → `danger-weights.mjs`。按对局切分训练集和测试集；
+- 测试集上两项 AUC 都明显高于启发式，但用于防守在复式里没有收益（数据和原因见 README）。改了特征必须重新导出和训练，`danger-model.mjs` 加载时会检查特征名和版本。
 - 川麻没有振听，所以「对手打过的牌」**不**等于安全，这一点和日麻不同。
 
 ## LLM 服务商

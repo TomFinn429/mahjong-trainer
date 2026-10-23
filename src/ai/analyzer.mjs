@@ -9,6 +9,7 @@ import { shanten, ukeire, toCounts, suitOf, isWinHand, tileCN, decompose, blockN
 import { evalWin } from '../game/engine.mjs';
 import { visibleCounts, allThreats, tileDanger } from './danger.mjs';
 import { estimateDiscards } from './montecarlo.mjs';
+import { learnedThreats, learnedTileDanger } from './danger-model.mjs';
 import { seedFrom } from '../game/rng.mjs';
 
 const SUIT_NAME = ['万', '条', '筒'];
@@ -72,15 +73,20 @@ export function stanceOf(bestShanten, threats, wallCount) {
 
 const LAMBDA = { attack: 0, balance: 1.2, fold: 12 };
 
+/* opts.dangerModel：'heuristic'（默认，danger.mjs）或 'learned'（danger-model.mjs）；
+   opts.lambda：覆盖各攻守模式下危险度的权重 */
 export function evaluateDiscards(view, opts = {}) {
   const me = meOf(view);
-  const threats = allThreats(view);
+  const learned = opts.dangerModel === 'learned';
+  const threats = learned ? learnedThreats(view) : allThreats(view);
+  const dangerOf = learned ? learnedTileDanger : tileDanger;
+  const lambda = { ...LAMBDA, ...(opts.lambda || {}) };
   const visible = visibleCounts(view);
   const tilesToTry = [...new Set(view.actions.filter(a => a.type === 'discard').map(a => a.tile))];
   const rows = tilesToTry.map(tile => {
     const hand = me.hand.slice(); hand.splice(hand.indexOf(tile), 1);
     const eff = handEfficiency(view, hand);
-    const dg = tileDanger(view, tile, threats, visible);
+    const dg = dangerOf(view, tile, threats, visible);
     return { tile, ...eff, danger: dg.danger, dangerBy: dg.by };
   });
   const bestSh = Math.min(...rows.map(r => r.shanten));
@@ -88,7 +94,7 @@ export function evaluateDiscards(view, opts = {}) {
   if (opts.balance === false && st.stance === 'balance') st.stance = 'attack';
   for (const r of rows) {
     const waitBonus = r.waits ? r.waits.reduce((a, w) => a + w.remain * (1 + w.fan * 0.5), 0) : 0;
-    r.score = +(-r.shanten * 100 + r.ukeireTotal + waitBonus * 0.5 - LAMBDA[st.stance] * r.danger * 100).toFixed(2);
+    r.score = +(-r.shanten * 100 + r.ukeireTotal + waitBonus * 0.5 - lambda[st.stance] * r.danger * 100).toFixed(2);
   }
   rows.sort((a, b) => b.score - a.score || a.shanten - b.shanten || b.ukeireTotal - a.ukeireTotal || a.tile - b.tile);
   return { rows, threats, ...st };
@@ -211,22 +217,25 @@ export function analyze(view) {
     opponents: [],
     alerts: []
   };
-  const threats = allThreats(view);
+  // 威胁 / 危险度显示用学习模型（测试集上比启发式准，见 README）；启发式的理由保留作说明
+  const threats = learnedThreats(view);
+  const heur = allThreats(view);
   for (const p of view.players) {
     if (p.seat === view.seat) continue;
     const t = threats[p.seat];
+    const reasons = p.won ? t.reasons : [...t.reasons, ...heur[p.seat].reasons];
     out.opponents.push({
       seat: p.seat, voidSuit: p.voidSuit, won: p.won ? { fan: p.won.fan, zimo: p.won.zimo } : null,
       melds: p.melds.map(m => ({ kind: m.kind, tile: m.tile })),
       discards: p.discards.filter(d => !d.claimed).map(d => d.tile),
       draws: p.draws, score: p.score,
-      threat: +t.threat.toFixed(2), voidCleared: t.voidCleared, suspectSuit: t.suspectSuit, reasons: t.reasons
+      threat: +t.threat.toFixed(2), voidCleared: t.voidCleared, suspectSuit: t.suspectSuit, reasons
     });
   }
 
   if (view.phase === 'turn' && view.turn === view.seat && view.actions.some(a => a.type === 'discard')) {
     // 排序与高手电脑同口径（不含防守项）；攻守判断只作为提示
-    const ev = evaluateDiscards(view, { defense: false });
+    const ev = evaluateDiscards(view, { defense: false, dangerModel: 'learned' });
     const st = stanceOf(Math.min(...ev.rows.map(r => r.shanten)), ev.threats, view.wallCount);
     out.stance = st.stance;
     out.maxThreat = +st.maxThreat.toFixed(2);

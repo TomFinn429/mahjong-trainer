@@ -47,7 +47,7 @@ export function decide(bot, view) {
 
   // 自己回合
   if (has('hu')) return has('hu');
-  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance });
+  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance, dangerModel: bot.opts.dangerModel, lambda: bot.opts.lambda });
   const rows = ev.rows;
   if (bot.level === 3 && bot.opts.lookahead) refineByLookahead(view, rows);
   if (bot.level === 3 && bot.opts.mc) refineByMonteCarlo(view, rows, bot, bot.opts.mcOpts);

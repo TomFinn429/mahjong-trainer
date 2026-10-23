@@ -110,6 +110,43 @@ o1 正确率 31%，GPT-4o 不到 9%。开源川麻项目 [To-G/mahjong-ai](https
 
 自己复测：`node tools/duplicate.mjs --a '{"level":3,"opts":{"mc":true}}' --b '{"level":3}' --decks 1000`。
 
+**学习型危险度**（`src/ai/danger-model.mjs`）：用 4000 局高手自对弈牌谱训练两个模型。
+一个预测对手此刻是否听牌（逻辑回归），一个预测打出某张牌会不会被某家胡（LightGBM，206 棵树）。
+特征只用打牌者看得到的信息（`src/ai/danger-features.mjs`），标签来自重放时的全知状态。
+测试集是另外 800 局没参与训练的对局：
+
+| 指标（测试集） | 现有启发式 | 学习模型 |
+|---|---|---|
+| 听牌预测 AUC | 0.834 | **0.892** |
+| 放炮预测 AUC | 0.776 | **0.867** |
+| 放炮预测 Brier（越小越好） | 0.043 | **0.029** |
+| 平均预测放炮率（实际 3.4%） | 10.5% | **3.4%** |
+
+模型明显更准，但拿它做防守，复式自对弈**没有收益**：
+
+| 防守方式（A 相对不防守的高手） | 种子 | 副牌数 | 优势（分 / 座 / 局） |
+|---|---|---|---|
+| 原攻守切换规则 + 启发式危险度 | 9001 起 | 1000 | −0.07 ± 0.10 |
+| 原攻守切换规则 + 学习模型 | 9001 起 | 1000 | −0.09 ± 0.14 |
+| 每张牌统一扣 λ × 放炮概率（λ = 0.5 / 1 / 2 / 4） | 9001 起 | 各 1000 | +0.03 / −0.04 / −0.15 / **−0.46** ± 0.2 |
+| 只在弃和条件下扣分，λ = 1，学习模型（调参时最好的一组） | 9001 起 | 1000 | +0.07 ± 0.07 |
+| 同上，**留出验证** | 20001 起 | 3000 | −0.04 ± 0.04 |
+| 同上，换成启发式危险度，留出验证 | 20001 起 | 3000 | −0.01 ± 0.02 |
+
+原因可以从牌谱统计里看出来：点炮一次平均只赔 1.62 分，自摸一次平均收 5.50 分（每家付 3.14 分）。
+弃和降低了自己的胡牌机会，却挡不住最贵的别家自摸；而且血战里点炮让对手胡走以后，他就退出了，反而少了一个抢自摸的人。
+所以高手仍然默认不防守。分析面板的危险度和威胁改用学习模型显示（更准），推荐排序不受影响。
+注意模型是用电脑对局训练的，真人会扣牌、节奏更慢，对真人的估计可能有偏差。
+
+重新训练（需要 Python ≥ 3.10，只用于离线训练）：
+
+```bash
+python -m venv tools/py/.venv && tools/py/.venv/Scripts/pip install -r tools/py/requirements.txt   # Linux/macOS 用 .venv/bin/
+node tools/duplicate.mjs --a '{"level":3}' --b '{"level":3}' --decks 2000 --start 100001 --records work/danger/selfplay.jsonl
+node tools/export-danger-data.mjs work/danger/selfplay.jsonl work/danger
+tools/py/.venv/Scripts/python tools/py/train_danger.py work/danger   # 生成 src/ai/danger-weights.mjs
+```
+
 
 ## 怎么开始（30 秒）
 
@@ -352,6 +389,7 @@ node --test tests/engine.test.mjs   # 对局引擎：换三张、定缺、碰杠
 node --test tests/bots.test.mjs     # 电脑合法性、难度回归（复式）、分析器、危险度
 node --test tests/record.test.mjs   # 牌谱导出 / 重放 / 篡改检测 / 决策样本不泄露别家手牌
 node --test tests/montecarlo.test.mjs  # 蒙特卡洛前瞻：可复现、排序范围、分析器不改推荐
+node --test tests/danger-model.test.mjs  # 学习型危险度：与 Python 预测一致、规则安全牌、新对局上 AUC 高于启发式
 node --test tests/llm.test.mjs      # SSE 解析、流式客户端、提示词、讲解校验、本地代理安全
 ```
 
@@ -370,7 +408,7 @@ mahjong-trainer/
 │   ├── core/mj-core.js   # 向听 / 有效牌 / 和牌 / 番型 / 计分（训练器与对局共用）
 │   ├── core/core.mjs     # 上面的 ES 模块入口
 │   ├── game/             # 对局引擎（engine）、规则默认值（rules）、种子随机数（rng）、牌谱（record）
-│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger）、蒙特卡洛前瞻（montecarlo）
+│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger 启发式 / danger-model 学习型）、蒙特卡洛前瞻（montecarlo）
 │   ├── llm/              # 服务商、流式客户端、提示词与讲解校验
 │   └── ui/table.mjs      # 对局界面
 ├── tests/                # node:test 测试（引擎 / 电脑 / 牌谱 / 蒙特卡洛 / LLM）
@@ -383,7 +421,9 @@ mahjong-trainer/
     ├── test-fan.js       # 和牌判定 / 番型 / 计分 / 文本 / 副露 / 牌河 自检
     ├── verify-shanten.js # 向听的独立实现交叉验证
     ├── duplicate.mjs     # 复式自对弈：比较两种电脑配置，多线程，可导出牌谱 JSONL
-    └── calibrate-mc.mjs  # 用自对弈牌谱校准蒙特卡洛的点炮系数
+    ├── calibrate-mc.mjs  # 用自对弈牌谱校准蒙特卡洛的点炮系数
+    ├── export-danger-data.mjs  # 牌谱 → 危险度模型训练数据
+    └── py/train_danger.py      # 离线训练危险度模型，导出 src/ai/danger-weights.mjs
 ```
 
 ## 许可

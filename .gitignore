@@ -5,6 +5,8 @@ work/
 
 # 依赖与构建产物
 node_modules/
+tools/py/.venv/
+__pycache__/
 dist/
 
 # 编辑器 / 系统

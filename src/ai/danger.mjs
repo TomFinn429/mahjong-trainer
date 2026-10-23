@@ -19,7 +19,7 @@ export function visibleCounts(view) {
 }
 
 /* 对手是否已打完缺门：最近 3 张出牌都不是缺门，或者已经有副露（有缺门牌时打出的必须是缺门） */
-function voidCleared(p) {
+export function voidCleared(p) {
   if (p.voidSuit === null || p.voidSuit === undefined) return false;
   const ds = p.discards;
   if (!ds.length) return false;
@@ -28,7 +28,7 @@ function voidCleared(p) {
 }
 
 /* 是否像在做清一色：副露全是同一门，且该门很少出现在牌河里 */
-function suspectQing(p) {
+export function suspectQing(p) {
   if (!p.melds.length) return null;
   const s = suitOf(p.melds[0].tile);
   if (!p.melds.every(m => suitOf(m.tile) === s)) return null;

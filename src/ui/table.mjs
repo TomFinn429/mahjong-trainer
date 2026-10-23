@@ -366,7 +366,7 @@ function renderAnalysis(view) {
     (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}${o.voidCleared ? '（已打完）' : ''}` : '') +
     (o.suspectSuit !== null ? ` · 疑似清一色${SUIT_CN[o.suspectSuit]}` : '') +
     (!o.won && o.reasons.length ? ` <span class="hint">${esc(o.reasons.join('、'))}</span>` : '') + '</div>').join('') + '</div>');
-  parts.push('<div class="hint" style="margin-top:6px">危险度与威胁是启发式估计；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。</div>');
+  parts.push('<div class="hint" style="margin-top:6px">危险度（放炮概率）与威胁（听牌概率）是用电脑自对弈牌谱训练的模型估计，对真人对手可能偏差；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。</div>');
   el.innerHTML = parts.join('');
   el.querySelectorAll('tr[data-tile]').forEach(tr => {
     const t = tr.dataset.tile;

@@ -1,0 +1,4 @@
+# 只用于离线训练（tools/py/train_danger.py），对局页和 npm test 都不需要
+numpy==2.5.4
+scikit-learn==1.9.1
+lightgbm==4.7.0
