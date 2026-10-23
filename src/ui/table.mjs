@@ -345,8 +345,9 @@ function renderAnalysis(view) {
     a.candidates.slice(0, 8).forEach((c, i) => {
       const uk = c.ukeire.filter(u => u.remain > 0).map(u => `${tileCN(u.tile)}×${u.remain}`).join(' ');
       const waits = c.waits ? '听 ' + c.waits.map(w => `${tileCN(w.tile)}(${w.remain}张/${w.fan}番)`).join(' ') : '';
+      const mc = !hide && c.mc ? `模拟：和牌率 ${Math.round(c.mc.winRate * 100)}%，期望 ${c.mc.ev} 分` : '';
       parts.push(`<tr class="${!hide && i === 0 ? 'best' : ''}" data-tile="${c.tile}"><td>${c.id} ${tileCN(c.tile)}</td><td>${c.shanten}</td>` +
-        `<td title="${esc(uk)}">${c.ukeireTotal} 张${waits ? '<br><span class="hint">' + esc(waits) + '</span>' : ''}</td>` +
+        `<td title="${esc(uk)}">${c.ukeireTotal} 张${waits ? '<br><span class="hint">' + esc(waits) + '</span>' : ''}${mc ? '<br><span class="hint" title="只模拟自己往后的摸打，是估计值">' + esc(mc) + '</span>' : ''}</td>` +
         `<td><span class="dbar" style="width:${Math.round(c.danger * 60) + 2}px"></span> ${c.danger}</td>${hide ? '' : `<td>${c.score}</td>`}</tr>`);
     });
     parts.push('</table>');
@@ -365,7 +366,7 @@ function renderAnalysis(view) {
     (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}${o.voidCleared ? '（已打完）' : ''}` : '') +
     (o.suspectSuit !== null ? ` · 疑似清一色${SUIT_CN[o.suspectSuit]}` : '') +
     (!o.won && o.reasons.length ? ` <span class="hint">${esc(o.reasons.join('、'))}</span>` : '') + '</div>').join('') + '</div>');
-  parts.push('<div class="hint" style="margin-top:6px">危险度与威胁是启发式估计；对手缺门花色的牌对他绝对安全。</div>');
+  parts.push('<div class="hint" style="margin-top:6px">危险度与威胁是启发式估计；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。</div>');
   el.innerHTML = parts.join('');
   el.querySelectorAll('tr[data-tile]').forEach(tr => {
     const t = tr.dataset.tile;

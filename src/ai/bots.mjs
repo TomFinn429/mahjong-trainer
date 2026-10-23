@@ -6,13 +6,14 @@ import { shanten, toCounts, suitOf, voidEval, ukeire } from '../core/core.mjs';
 import { pending, submit, viewFor } from '../game/engine.mjs';
 import { nextRand, randInt } from '../game/rng.mjs';
 import { evaluateDiscards, evaluateClaim, evaluateTurnGang, refineByLookahead, withQingBias } from './analyzer.mjs';
+import { refineByMonteCarlo } from './montecarlo.mjs';
 
 export const LEVEL_NAME = { 1: '入门', 2: '进阶', 3: '高手' };
 
 /* 高手默认策略来自复式自对弈（见 README「电脑难度实测」）：
    一步前瞻 + 清一色倾向有显著收益；危险度防守在当前对手池里没有收益，默认关闭 */
 export function createBot(level, seed, opts) {
-  return { level, rng: (seed >>> 0) || 1, opts: { defense: false, balance: true, qing: true, pongEqual: false, lookahead: true, ...(opts || {}) } };
+  return { level, rng: (seed >>> 0) || 1, opts: { defense: false, balance: true, qing: true, pongEqual: false, lookahead: true, mc: false, ...(opts || {}) } };
 }
 
 export function decide(bot, view) {
@@ -49,6 +50,7 @@ export function decide(bot, view) {
   const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance });
   const rows = ev.rows;
   if (bot.level === 3 && bot.opts.lookahead) refineByLookahead(view, rows);
+  if (bot.level === 3 && bot.opts.mc) refineByMonteCarlo(view, rows, bot, bot.opts.mcOpts);
   for (const a of acts.filter(a => a.type === 'angang' || a.type === 'bugang')) {
     if (bot.level === 1) return a;
     const e = evaluateTurnGang(view, a);

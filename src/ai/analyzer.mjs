@@ -8,6 +8,8 @@
 import { shanten, ukeire, toCounts, suitOf, isWinHand, tileCN, decompose, blockName } from '../core/core.mjs';
 import { evalWin } from '../game/engine.mjs';
 import { visibleCounts, allThreats, tileDanger } from './danger.mjs';
+import { estimateDiscards } from './montecarlo.mjs';
+import { seedFrom } from '../game/rng.mjs';
 
 const SUIT_NAME = ['万', '条', '筒'];
 const REL = ['你', '下家', '对家', '上家'];
@@ -232,6 +234,7 @@ export function analyze(view) {
     const q = withQingBias(ev.rows, me);
     if (q !== ev.rows[0]) { ev.rows.splice(ev.rows.indexOf(q), 1); ev.rows.unshift(q); q.qingBias = true; }
     out.candidates = ev.rows.map((r, i) => ({ id: `c${i + 1}`, ...r }));
+    attachMonteCarlo(view, out.candidates);
     out.recommend = out.candidates[0] ? { action: 'discard', tile: out.candidates[0].tile, id: 'c1' } : null;
     const d = decompose(usable(toCounts(me.hand), me.voidSuit), me.melds.length);
     out.me.blocks = d.seven
@@ -263,6 +266,19 @@ export function analyze(view) {
   if (out.me.voidLeft && me.draws >= 6) out.alerts.push({ level: 'warn', code: 'voidLeft', text: `还有 ${out.me.voidLeft} 张缺门牌未打（${SUIT_NAME[me.voidSuit]}），流局会被查花猪` });
   out.lastEvent = last ? last.type : null;
   return out;
+}
+
+/* 蒙特卡洛估计（只作参考，不改变排序：复式自对弈里用它改选没有显著收益，见 README）。
+   一向听以内、向听最小的前 4 名各模拟 96 次；种子由局面决定，同一局面结果稳定 */
+function attachMonteCarlo(view, cands) {
+  const me = meOf(view);
+  if (!cands.length || me.hand.some(t => suitOf(t) === me.voidSuit)) return;
+  const bestSh = Math.min(...cands.map(c => c.shanten));
+  if (bestSh > 1) return;
+  const pool = cands.filter(c => c.shanten === bestSh).slice(0, 4);
+  const rng = { rng: seedFrom(`${view.seat}|${view.log.length}|${me.hand.join(',')}`) };
+  const est = estimateDiscards(view, pool.map(c => c.tile), rng, { samples: 96 });
+  for (const c of pool) c.mc = est[c.tile];
 }
 
 /* 是否值得提醒玩家点「AI 讲解」 */

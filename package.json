@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tools/test-core.js && node tools/test-fan.js && node tools/verify-shanten.js && node --test tests/engine.test.mjs tests/bots.test.mjs tests/record.test.mjs tests/llm.test.mjs"
+    "test": "node tools/test-core.js && node tools/test-fan.js && node tools/verify-shanten.js && node --test tests/engine.test.mjs tests/bots.test.mjs tests/record.test.mjs tests/montecarlo.test.mjs tests/llm.test.mjs"
   },
   "keywords": [
     "mahjong",

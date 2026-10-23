@@ -97,6 +97,19 @@ o1 正确率 31%，GPT-4o 不到 9%。开源川麻项目 [To-G/mahjong-ai](https
 调优过程中，危险度防守（攻守兼顾 / 弃和）在这个对手池里**没有**带来收益（+0.02 ± 0.11），所以高手默认不开防守。
 分析面板仍会显示危险度和对手威胁，但它们是启发式估计，只作参考。
 
+**蒙特卡洛前瞻**（`src/ai/montecarlo.mjs`）：随机补全看不见的牌，模拟自己往后的摸打，估计每种打法的和牌率和期望得分。
+点炮系数用自对弈牌谱校准（高手自对弈 300 局、1119 次首次听牌：实际和牌率 76.8%，模拟 75.0%）。
+拿它给高手改选的结果如下，在新种子（20001 起）上做留出验证，**都不显著**，所以高手默认不开，
+分析面板只把估计值作为参考显示，不参与排序：
+
+| 对比（A 相对现高手） | 副牌数 | 优势（分 / 座 / 局） |
+|---|---|---|
+| 三向听以内都用模拟排序（48 次，不设门槛） | 1000 | −0.19 ± 0.21 |
+| 只在听牌选择时用，期望高 10% 才改选（96 次，即 `mc: true` 的默认参数） | 3000 | +0.03 ± 0.05 |
+| 一向听以内，期望高 15% 才改选（96 次） | 3000 | +0.01 ± 0.10 |
+
+自己复测：`node tools/duplicate.mjs --a '{"level":3,"opts":{"mc":true}}' --b '{"level":3}' --decks 1000`。
+
 
 ## 怎么开始（30 秒）
 
@@ -338,6 +351,7 @@ node tools/test-fan.js        # 58 项：和牌判定、番型识别、计分、
 node --test tests/engine.test.mjs   # 对局引擎：换三张、定缺、碰杠、一炮多响、呼叫转移、抢杠、过手胡、流局结算、300 局不变量
 node --test tests/bots.test.mjs     # 电脑合法性、难度回归（复式）、分析器、危险度
 node --test tests/record.test.mjs   # 牌谱导出 / 重放 / 篡改检测 / 决策样本不泄露别家手牌
+node --test tests/montecarlo.test.mjs  # 蒙特卡洛前瞻：可复现、排序范围、分析器不改推荐
 node --test tests/llm.test.mjs      # SSE 解析、流式客户端、提示词、讲解校验、本地代理安全
 ```
 
@@ -356,10 +370,10 @@ mahjong-trainer/
 │   ├── core/mj-core.js   # 向听 / 有效牌 / 和牌 / 番型 / 计分（训练器与对局共用）
 │   ├── core/core.mjs     # 上面的 ES 模块入口
 │   ├── game/             # 对局引擎（engine）、规则默认值（rules）、种子随机数（rng）、牌谱（record）
-│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger）
+│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger）、蒙特卡洛前瞻（montecarlo）
 │   ├── llm/              # 服务商、流式客户端、提示词与讲解校验
 │   └── ui/table.mjs      # 对局界面
-├── tests/                # node:test 测试（引擎 / 电脑 / 牌谱 / LLM）
+├── tests/                # node:test 测试（引擎 / 电脑 / 牌谱 / 蒙特卡洛 / LLM）
 ├── docs/ai-table-design.md  # AI 对局设计与规则口径（含每条规则的出处）
 ├── docs/game-record.md   # 牌谱格式
 ├── docs/screenshot.png   # 界面预览
@@ -368,7 +382,8 @@ mahjong-trainer/
     ├── test-core.js      # 向听 / 定缺 / 出题器自检
     ├── test-fan.js       # 和牌判定 / 番型 / 计分 / 文本 / 副露 / 牌河 自检
     ├── verify-shanten.js # 向听的独立实现交叉验证
-    └── duplicate.mjs     # 复式自对弈：比较两种电脑配置，多线程，可导出牌谱 JSONL
+    ├── duplicate.mjs     # 复式自对弈：比较两种电脑配置，多线程，可导出牌谱 JSONL
+    └── calibrate-mc.mjs  # 用自对弈牌谱校准蒙特卡洛的点炮系数
 ```
 
 ## 许可
