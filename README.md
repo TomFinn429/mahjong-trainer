@@ -253,7 +253,7 @@ o1 正确率 31%，GPT-4o 不到 9%。开源川麻项目 [To-G/mahjong-ai](https
 
 - **荒庄前最后四张能胡必须胡**，别为了做大牌放过终局附近的胡牌机会。
 - **杠是低风险收益**：明杠/暗杠立即进账，杠上开花还加番，早中盘的杠基本没有理由不杠。
-- **抢杠胡按自摸计**，所以要留意别人补杠的那张牌。
+- **抢杠胡由补杠者一家赔（按点炮计，+1 番）**，所以补杠前要留意别人是不是在听这张牌。
 
 ---
 
@@ -358,7 +358,7 @@ mahjong-trainer/
 │   ├── llm/              # 服务商、流式客户端、提示词与讲解校验
 │   └── ui/table.mjs      # 对局界面
 ├── tests/                # node:test 测试（引擎 / 电脑 / LLM）
-├── docs/ai-table-design.md  # AI 对局设计与规则口径
+├── docs/ai-table-design.md  # AI 对局设计与规则口径（含每条规则的出处）
 ├── docs/screenshot.png   # 界面预览
 ├── .github/workflows/    # GitHub Actions：Node 18/20/22 跑自检
 └── tools/
