@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, viewFor } from '../src/game/engine.mjs';
+import { createGame, viewFor, submit } from '../src/game/engine.mjs';
+import { visibleCounts } from '../src/ai/danger.mjs';
 import { createBot, runBots } from '../src/ai/bots.mjs';
 import { evaluateDiscards, analyze } from '../src/ai/analyzer.mjs';
 import { estimateDiscards, refineByMonteCarlo } from '../src/ai/montecarlo.mjs';
@@ -58,4 +59,16 @@ test('开启蒙特卡洛的高手电脑：整局动作合法、分数零和', ()
     assert.equal(g.phase, 'end');
     assert.equal(g.result.scores.reduce((x, y) => x + y, 0), 0);
   }
+});
+
+test('看不见的牌：不含胡牌者暗手，自摸亮出的那张算作可见', () => {
+  const g = setup({ hands: ['9m 111p 222p 333p 444p 6p', '123m 456s 789s 123s 5m', '34m 678s 678s 234s 99s', '666p 777p 888p 999p 7p'], voids: [1, P, P, 0], wall: '5m 5m' });
+  submit(g, 0, { type: 'discard', tile: tiles('9m')[0] });
+  submit(g, 1, { type: 'hu' });
+  assert.ok(g.players[1].won.zimo);
+  const v = viewFor(g, 0);
+  assert.equal(v.players[1].hand, null);
+  const vis = visibleCounts(v);
+  assert.equal(vis[tiles('5m')[0]], 1, '只有自摸亮出的 5m 可见');
+  assert.equal(vis[tiles('1m')[0]], 0, '胡牌者暗手里的 1m 不可见');
 });

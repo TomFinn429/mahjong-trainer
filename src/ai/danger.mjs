@@ -7,11 +7,13 @@
    ============================================================ */
 import { suitOf } from '../core/core.mjs';
 
-/* 观察者可见的每种牌张数：自己手牌 + 所有副露 + 牌河 + 已胡者亮出的手牌 */
+/* 观察者可见的每种牌张数：自己手牌 + 所有副露 + 牌河 + 自摸者亮出的那张胡牌
+   （胡牌者其余手牌扣着不亮；点炮 / 抢杠的胡牌留在出牌者牌河里，已经算在牌河中） */
 export function visibleCounts(view) {
   const c = new Array(27).fill(0);
   for (const p of view.players) {
     if (p.hand) for (const t of p.hand) c[t]++;
+    else if (p.won && p.won.zimo) c[p.won.tile]++;
     for (const m of p.melds) c[m.tile] += m.kind === 'gang' ? 4 : 3;
     for (const d of p.discards) if (!d.claimed) c[d.tile]++;
   }

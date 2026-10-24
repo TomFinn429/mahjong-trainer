@@ -84,6 +84,25 @@ test('一炮多响：两家同时胡，点炮者分别赔付；血战继续', ()
   assert.deepEqual(tileCensus(g), before);
 });
 
+test('胡牌者手牌不公开：别家视图只看到胡的那张，自己仍能看到', () => {
+  const g = setup({
+    hands: ['5m 111p 222p 333p 444p 5p', '123m 456s 789s 123s 5m', '34m 678s 678s 234s 99s', '666p 777p 888p 999p 5p'],
+    voids: [S, P, P, M], wall: '9m 9m 8m'
+  });
+  submit(g, 0, { type: 'discard', tile: tiles('5m')[0] });
+  submit(g, 1, { type: 'hu' });
+  submit(g, 2, { type: 'hu' });
+  for (const seat of [0, 3]) {
+    const v = viewFor(g, seat);
+    for (const w of [1, 2]) {
+      assert.equal(v.players[w].hand, null, `座位 ${seat} 不应看到胡牌者 ${w} 的手牌`);
+      assert.equal(v.players[w].handCount, 13);
+      assert.equal(v.players[w].won.tile, tiles('5m')[0]);
+    }
+  }
+  assert.equal(viewFor(g, 1).players[1].hand.length, 13, '胡牌者自己仍能看到手牌');
+});
+
 test('关闭一炮多响时只有离点炮者最近的一家胡', () => {
   const g = setup({
     hands: ['5m 111p 222p 333p 444p 5p', '123m 456s 789s 123s 5m', '34m 678s 678s 234s 99s', '666p 777p 888p 999p 5p'],

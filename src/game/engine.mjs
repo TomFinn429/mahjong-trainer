@@ -88,7 +88,7 @@ export function viewFor(g, seat) {
     rob: g.rob ? { ...g.rob } : null,
     players: g.players.map(p => ({
       seat: p.seat,
-      hand: (p.seat === seat || p.won) ? p.hand.slice() : null,
+      hand: p.seat === seat ? p.hand.slice() : null,   // 胡牌者手牌扣着不亮，局终才摊牌
       handCount: p.hand.length,
       melds: p.melds.map(m => ({ ...m })),
       discards: p.discards.map(d => ({ ...d })),

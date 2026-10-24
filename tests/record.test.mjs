@@ -36,14 +36,14 @@ test('牌谱：事件被改动时重放报出第一处差异', () => {
   assert.throws(() => replayRecord(rec), /事件 10/);
 });
 
-test('决策样本：每个决定一条，动作合法，看不到别家未胡的手牌', () => {
+test('决策样本：每个决定一条，动作合法，看不到别家手牌（含已胡者）', () => {
   const rec = botGame(7, 3, { exchangeThree: true });
   const samples = decisionSamples(rec);
   assert.equal(samples.length, rec.decisions.length);
   for (const s of samples) {
     if (s.action.type !== 'exchange') assert.ok(s.legal.some(l => l.type === s.action.type && (l.tile === undefined || l.tile === s.action.tile)), '动作应在合法列表里');
     assert.ok(Array.isArray(s.view.players[s.seat].hand));
-    for (const p of s.view.players) if (p.seat !== s.seat && !p.won) assert.equal(p.hand, null);
+    for (const p of s.view.players) if (p.seat !== s.seat) assert.equal(p.hand, null);
     assert.equal(s.view.log, undefined);
   }
   assert.ok(decisionSamples(rec, { seats: [2] }).every(s => s.seat === 2));

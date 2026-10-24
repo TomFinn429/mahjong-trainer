@@ -147,9 +147,13 @@ function renderOpp(view, s) {
     `<span class="badge">${p.score >= 0 ? '+' : ''}${p.score}</span>`;
   const hand = document.createElement('div');
   hand.className = 'river';
-  const full = S.reveal || p.won || g.phase === 'end' ? g.players[s].hand : null;
-  if (full) full.forEach(t => hand.appendChild(tileEl(t, { sm: true })));
-  else for (let i = 0; i < p.handCount; i++) hand.appendChild(tileEl(null, { sm: true }));
+  // 胡牌者手牌扣着不亮，只亮胡的那张；局终摊牌，「明牌」开关只影响显示
+  const full = S.reveal || g.phase === 'end' ? g.players[s].hand.slice() : null;
+  const zimoTile = p.won && p.won.zimo ? p.won.tile : null;   // 自摸的胡牌在手里，单独放到「胡」后面
+  if (full) {
+    if (zimoTile !== null) full.splice(full.indexOf(zimoTile), 1);
+    full.forEach(t => hand.appendChild(tileEl(t, { sm: true })));
+  } else for (let i = 0; i < p.handCount - (zimoTile !== null ? 1 : 0); i++) hand.appendChild(tileEl(null, { sm: true }));
   if (p.won) { hand.appendChild(document.createTextNode(' 胡 ')); hand.appendChild(tileEl(p.won.tile, { sm: true, cls: 'huby' })); }
   el.replaceChildren(head, hand, meldsEl(p.melds, true), riverEl(view, p));
 }
