@@ -329,7 +329,7 @@ function renderAnalysis(view) {
   const el = $('#analysis');
   const a = S.analysis;
   const parts = ['<div class="bar" style="justify-content:space-between"><b style="font-size:13px">局势分析（程序计算）</b>'];
-  parts.push(a && a.stance ? `<span class="badge">${({ attack: '进攻', balance: '攻守兼顾', fold: '建议防守' })[a.stance]}</span>` : '');
+  parts.push(a && a.stance ? `<span class="badge">${({ attack: '进攻', balance: '对手有威胁', fold: '对手威胁高' })[a.stance]}</span>` : '');
   parts.push('</div>');
   if (S.feedback && S.feedback.mine) {
     const f = S.feedback;
@@ -350,19 +350,22 @@ function renderAnalysis(view) {
       const uk = c.ukeire.filter(u => u.remain > 0).map(u => `${tileCN(u.tile)}×${u.remain}`).join(' ');
       const waits = c.waits ? '听 ' + c.waits.map(w => `${tileCN(w.tile)}(${w.remain}张/${w.fan}番)`).join(' ') : '';
       const mc = !hide && c.mc ? `模拟：和牌率 ${Math.round(c.mc.winRate * 100)}%，期望 ${c.mc.ev} 分` : '';
+      const odds = !hide && c.ev !== undefined ? (c.pHu !== undefined ? `和牌率约 ${Math.round(c.pHu * 100)}%` : `来得及听牌约 ${Math.round(c.pReach * 100)}%`) : '';
       parts.push(`<tr class="${!hide && i === 0 ? 'best' : ''}" data-tile="${c.tile}"><td>${c.id} ${tileCN(c.tile)}</td><td>${c.shanten}</td>` +
-        `<td title="${esc(uk)}">${c.ukeireTotal} 张${waits ? '<br><span class="hint">' + esc(waits) + '</span>' : ''}${mc ? '<br><span class="hint" title="只模拟自己往后的摸打，是估计值">' + esc(mc) + '</span>' : ''}</td>` +
-        `<td><span class="dbar" style="width:${Math.round(c.danger * 60) + 2}px"></span> ${c.danger}</td>${hide ? '' : `<td>${c.score}</td>`}</tr>`);
+        `<td title="${esc(uk)}">${c.ukeireTotal} 张${waits ? '<br><span class="hint">' + esc(waits) + '</span>' : ''}${odds ? '<br><span class="hint">' + esc(odds) + '</span>' : ''}${mc ? '<br><span class="hint" title="只模拟自己往后的摸打，是估计值">' + esc(mc) + '</span>' : ''}</td>` +
+        `<td><span class="dbar" style="width:${Math.round(c.danger * 60) + 2}px"></span> ${c.danger}</td>${hide ? '' : `<td>${c.ev !== undefined ? `<span title="本局剩余部分的期望得分（底分），按自对弈牌谱拟合">期望 ${c.ev >= 0 ? '+' : ''}${c.ev.toFixed(2)}</span>` : c.score}</td>`}</tr>`);
     });
     parts.push('</table>');
     if (hide) parts.push('<div class="hint">练习模式：已隐藏推荐与综合分，出牌后显示对照。</div>');
   }
   if (a.claim) {
     const o = a.claim.options, b = a.claim.before;
-    parts.push(`<div class="alert">不动：向听 ${b.shanten}，有效牌 ${b.ukeireTotal} 张</div>`);
+    const evTxt = v => (v === undefined || S.practice ? '' : `，期望 ${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+    parts.push(`<div class="alert">不动：向听 ${b.shanten}，有效牌 ${b.ukeireTotal} 张${evTxt(a.claim.evPass)}</div>`);
     if (o.hu) parts.push(`<div class="alert key">胡：${o.hu.fan} 番 ${o.hu.points} 分（${o.hu.yaku.map(k => FAN_LABEL[k] || k).join('、')}）</div>`);
-    if (o.pong) parts.push(`<div class="alert">碰后打 ${tileCN(o.pong.discard)}：向听 ${o.pong.shanten}，有效牌 ${o.pong.ukeireTotal} 张</div>`);
-    if (o.minggang) parts.push(`<div class="alert">杠：向听 ${o.minggang.shanten}，有效牌 ${o.minggang.ukeireTotal} 张，直杠收 2 分</div>`);
+    if (o.pong) parts.push(`<div class="alert">碰后打 ${tileCN(o.pong.discard)}：向听 ${o.pong.shanten}，有效牌 ${o.pong.ukeireTotal} 张` +
+      (o.pong.ev === undefined || S.practice ? '' : o.pong.evDiscard === o.pong.discard ? evTxt(o.pong.ev) : `；按期望得分碰后打 ${tileCN(o.pong.evDiscard)}${evTxt(o.pong.ev)}`) + '</div>');
+    if (o.minggang) parts.push(`<div class="alert">杠：向听 ${o.minggang.shanten}，有效牌 ${o.minggang.ukeireTotal} 张，直杠收 2 分${evTxt(o.minggang.ev)}</div>`);
   }
   parts.push('<div style="margin-top:8px">' + a.opponents.map(o =>
     `<div class="opp"><b>${esc(relName(o.seat))}</b>` +
@@ -370,7 +373,7 @@ function renderAnalysis(view) {
     (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}${o.voidCleared ? '（已打完）' : ''}` : '') +
     (o.suspectSuit !== null ? ` · 疑似清一色${SUIT_CN[o.suspectSuit]}` : '') +
     (!o.won && o.reasons.length ? ` <span class="hint">${esc(o.reasons.join('、'))}</span>` : '') + '</div>').join('') + '</div>');
-  parts.push('<div class="hint" style="margin-top:6px">危险度（放炮概率）与威胁（听牌概率）是用电脑自对弈牌谱训练的模型估计，对真人对手可能偏差；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。</div>');
+  parts.push('<div class="hint" style="margin-top:6px">危险度（放炮概率）与威胁（听牌概率）是用电脑自对弈牌谱训练的模型估计，对真人对手可能偏差；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。听牌 / 一向听时按「期望」排序：本局剩余部分的期望得分（底分），由自对弈牌谱拟合的和牌率与胡牌收入估计，排在综合分候选前面。</div>');
   el.innerHTML = parts.join('');
   el.querySelectorAll('tr[data-tile]').forEach(tr => {
     const t = tr.dataset.tile;

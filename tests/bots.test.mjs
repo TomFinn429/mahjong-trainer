@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, viewFor, refreshTurn } from '../src/game/engine.mjs';
-import { createBot, runBots } from '../src/ai/bots.mjs';
-import { analyze } from '../src/ai/analyzer.mjs';
+import { createGame, viewFor, refreshTurn, submit, pending } from '../src/game/engine.mjs';
+import { createBot, runBots, decide, STYLES } from '../src/ai/bots.mjs';
+import { analyze, evaluateClaim } from '../src/ai/analyzer.mjs';
 import { visibleCounts, opponentThreat, tileDangerVs } from '../src/ai/danger.mjs';
 import { setup, tiles } from './helpers.mjs';
 
 const M = 0, S = 1, P = 2;
+const WALL40 = Array.from({ length: 40 }, (_, i) => '123456789'[i % 9] + 'ps'[i % 2]).join(' ');
 
 test('三档电脑整局自动对战：动作都合法、对局能结束', () => {
   for (const level of [1, 2, 3]) {
@@ -66,4 +67,35 @@ test('危险度：对手缺门花色的牌对他绝对安全；已胡对手无�
   g.players[2].won = { order: 1, tile: 0, from: null, zimo: true, yaku: [], fan: 0, points: 1 };
   const v2 = viewFor(g, 0);
   assert.equal(opponentThreat(v2, v2.players[2]).threat, 0);
+});
+
+test('风格预设：防守型 / 大牌型 / 速度型整局动作合法、分数零和', () => {
+  for (const style of Object.keys(STYLES)) {
+    for (let seed = 1; seed <= 4; seed++) {
+      const g = createGame({ seed: 880 + seed });
+      runBots(g, [0, 1, 2, 3].map(i => createBot(3, seed + i, i % 2 ? STYLES[style] : undefined)));
+      assert.equal(g.phase, 'end', style);
+      assert.equal(g.result.scores.reduce((a, b) => a + b, 0), 0, style);
+    }
+  }
+});
+
+test('速度型：碰后向听不变也碰；按向听规则的高手不碰', () => {
+  // 下家 11m 23m 56m 234s 678s 9s：一向听。碰 1m 后打 9s 仍是一向听
+  const g = setup({ hands: ['1m 456m 789m 22s 456s 99s', '11m 23m 56m 234s 678s 9s', '1p', '2p'], voids: [P, P, M, M], wall: '3p 4p 5p' });
+  submit(g, 0, { type: 'discard', tile: tiles('1m')[0] });
+  assert.equal(g.phase, 'claim');
+  assert.ok(pending(g).seats[1].some(a => a.type === 'pong'));
+  const view = viewFor(g, 1);
+  assert.equal(decide(createBot(3, 1, { evClaim: false }), view).type, 'pass');
+  assert.equal(decide(createBot(3, 1, STYLES.speed), view).type, 'pong');
+});
+
+test('高手默认按期望得分决定碰不碰：选不动 / 碰中期望得分高的一个', () => {
+  const g = setup({ hands: ['1m 456m 789m 22s 456s 99s', '11m 23m 56m 234s 678s 9s', '1p', '2p'], voids: [P, P, M, M], wall: WALL40 });
+  submit(g, 0, { type: 'discard', tile: tiles('1m')[0] });
+  const view = viewFor(g, 1);
+  const ev = evaluateClaim(view, { ev: true });
+  assert.ok(ev.evPass !== undefined && ev.options.pong.ev !== undefined);
+  assert.equal(decide(createBot(3, 1), view).type, ev.options.pong.ev > ev.evPass ? 'pong' : 'pass');
 });

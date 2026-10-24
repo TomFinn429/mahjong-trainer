@@ -9,6 +9,7 @@ import { shanten, ukeire, toCounts, suitOf, isWinHand, tileCN, decompose, blockN
 import { evalWin } from '../game/engine.mjs';
 import { visibleCounts, allThreats, tileDanger } from './danger.mjs';
 import { estimateDiscards } from './montecarlo.mjs';
+import { evContext, handValue } from './ev.mjs';
 import { learnedThreats, learnedTileDanger } from './danger-model.mjs';
 import { seedFrom } from '../game/rng.mjs';
 
@@ -74,7 +75,8 @@ export function stanceOf(bestShanten, threats, wallCount) {
 const LAMBDA = { attack: 0, balance: 1.2, fold: 12 };
 
 /* opts.dangerModel：'heuristic'（默认，danger.mjs）或 'learned'（danger-model.mjs）；
-   opts.lambda：覆盖各攻守模式下危险度的权重 */
+   opts.lambda：覆盖各攻守模式下危险度的权重；
+   opts.ev：最好能到一向听以内时，听牌 / 一向听的候选改按期望得分（ev.mjs）排序，排在其他候选前面 */
 export function evaluateDiscards(view, opts = {}) {
   const me = meOf(view);
   const learned = opts.dangerModel === 'learned';
@@ -97,7 +99,26 @@ export function evaluateDiscards(view, opts = {}) {
     r.score = +(-r.shanten * 100 + r.ukeireTotal + waitBonus * 0.5 - lambda[st.stance] * r.danger * 100).toFixed(2);
   }
   rows.sort((a, b) => b.score - a.score || a.shanten - b.shanten || b.ukeireTotal - a.ukeireTotal || a.tile - b.tile);
+  if (opts.ev && bestSh <= 1) attachEV(view, rows, lambda[st.stance]);
   return { rows, threats, ...st };
+}
+
+/* 期望得分排序：放炮代价按平均点炮损失 1.6 分折算（docs/experiments.md） */
+const DEAL_IN_LOSS = 1.6;
+function attachEV(view, rows, lambda) {
+  const me = meOf(view);
+  const ctx = evContext(view);
+  for (const r of rows) {
+    if (r.shanten > 1) continue;
+    const hand = me.hand.slice(); hand.splice(hand.indexOf(r.tile), 1);
+    const v = handValue(ctx, hand);
+    if (!v) continue;
+    r.ev = +(v.ev - lambda * r.danger * DEAL_IN_LOSS).toFixed(3);
+    r.pHu = v.pHu, r.pReach = v.pReach;
+  }
+  const has = r => r.ev !== undefined;
+  if (!rows.some(has)) return;
+  rows.sort((a, b) => (has(b) - has(a)) || (has(a) ? b.ev - a.ev : 0) || b.score - a.score || a.tile - b.tile);
 }
 
 /* 一步前瞻（好形判断）：对向听相同、有效牌接近的前几名候选，
@@ -139,18 +160,20 @@ export function refineByLookahead(view, rows, maxCand = 4) {
 }
 
 /* 高手：一门牌明显占优时倾向做清一色（2 番 = 4 倍），优先打掉另一门，只要向听不变差 */
-export function withQingBias(rows, me) {
+/* opts.minTiles：主花色至少多少张（含副露）才开始做清一色；opts.slack：愿意比第一名少多少综合分 */
+export function withQingBias(rows, me, opts = {}) {
+  const minTiles = opts.minTiles ?? 9, slack = opts.slack ?? 8;
   const n = [0, 1, 2].map(s => (s === me.voidSuit ? -1 : me.hand.filter(t => suitOf(t) === s).length + me.melds.filter(m => suitOf(m.tile) === s).length * 3));
   const major = n.indexOf(Math.max(...n));
   const minor = [0, 1, 2].find(s => s !== major && s !== me.voidSuit);
-  if (minor === undefined || n[major] < 9 || me.melds.some(m => suitOf(m.tile) === minor)) return rows[0];
+  if (minor === undefined || n[major] < minTiles || me.melds.some(m => suitOf(m.tile) === minor)) return rows[0];
   const best = rows[0];
-  const alt = rows.filter(r => suitOf(r.tile) === minor && r.shanten === best.shanten && r.score >= best.score - 8)[0];
+  const alt = rows.filter(r => suitOf(r.tile) === minor && r.shanten === best.shanten && r.score >= best.score - slack)[0];
   return alt || best;
 }
 
-/* 碰 / 明杠 / 胡 的对比 */
-export function evaluateClaim(view) {
+/* 碰 / 明杠 / 胡 的对比；opts.ev：同时给出不动、碰、明杠的期望得分（算不出时为 undefined） */
+export function evaluateClaim(view, opts = {}) {
   const me = meOf(view);
   const tile = view.claim ? view.claim.tile : view.rob ? view.rob.tile : null;
   const out = { tile, options: {} };
@@ -177,16 +200,82 @@ export function evaluateClaim(view) {
       out.options.minggang = { shanten: e.shanten, ukeireTotal: e.ukeireTotal };
     }
   }
+  if (opts.ev && view.claim) {
+    const e = claimEV(view);
+    const r3 = x => (x === undefined ? undefined : +x.toFixed(3));
+    out.evPass = r3(e.pass);
+    if (out.options.pong && e.pong) Object.assign(out.options.pong, { ev: r3(e.pong.ev), evDiscard: e.pong.discard });
+    if (out.options.minggang && e.minggang !== undefined) out.options.minggang.ev = r3(e.minggang);
+  }
   return out;
+}
+
+/* ---------- 副露的期望得分（T12 第 3 步） ---------- */
+/* 杠后马上收到的杠钱（刮风下雨），算进杠的期望得分 */
+function gangIncome(view, gangType) {
+  const r = view.rules;
+  if (!r.gangPay) return 0;
+  const others = view.players.filter(p => !p.won).length - 1;
+  return r.base * (gangType === 'ming' ? r.gangPayMing : (gangType === 'an' ? r.gangPayAn : r.gangPayBu) * others);
+}
+
+/* 碰 / 明杠之后的假想视图：加上副露，被碰的那张从出牌者牌河里标记为已被拿走（否则可见张数会多算一张） */
+function claimedView(view, hand, meld) {
+  const from = view.claim.from;
+  return {
+    ...view,
+    players: view.players.map(p => {
+      if (p.seat === view.seat) return { ...p, hand, melds: [...p.melds, meld] };
+      if (p.seat === from) return { ...p, discards: p.discards.map((d, i) => (i === p.discards.length - 1 ? { ...d, claimed: true } : d)) };
+      return p;
+    })
+  };
+}
+
+const evOf = (view, hand) => { const v = handValue(evContext(view), hand); return v ? v.ev : undefined; };
+
+/* 别人打出一张牌时：不动、碰（碰后打出期望得分最高的一张）、明杠（含杠钱）各自的期望得分 */
+export function claimEV(view) {
+  const me = meOf(view);
+  const tile = view.claim.tile;
+  const out = { pass: evOf(view, me.hand) };
+  if (view.actions.some(a => a.type === 'pong')) {
+    const hand = me.hand.slice();
+    hand.splice(hand.indexOf(tile), 1); hand.splice(hand.indexOf(tile), 1);
+    const ctx = evContext(claimedView(view, hand, { kind: 'pong', tile }));
+    for (const t of new Set(discardPool(hand, me.voidSuit))) {
+      const h = hand.slice(); h.splice(h.indexOf(t), 1);
+      const v = handValue(ctx, h);
+      if (v && (!out.pong || v.ev > out.pong.ev)) out.pong = { ev: v.ev, discard: t };
+    }
+  }
+  if (view.actions.some(a => a.type === 'minggang')) {
+    const hand = me.hand.filter(t => t !== tile);
+    const v = evOf(claimedView(view, hand, { kind: 'gang', tile, gangType: 'ming' }), hand);
+    if (v !== undefined) out.minggang = v + gangIncome(view, 'ming');
+  }
+  return out;
+}
+
+/* 自己回合的暗杠 / 补杠：杠后（等补摸）的期望得分 + 杠钱；算不出时返回 undefined */
+export function turnGangEV(view, act) {
+  const { hand, fakeView } = turnGangView(view, act);
+  const v = evOf(fakeView, hand);
+  return v === undefined ? undefined : v + gangIncome(view, act.type === 'angang' ? 'an' : 'bu');
 }
 
 /* 自己回合的杠：暗杠 / 补杠后的牌效 vs 不杠时的最佳打法 */
 export function evaluateTurnGang(view, act) {
+  const { hand, fakeView } = turnGangView(view, act);
+  return handEfficiency(fakeView, hand);
+}
+
+function turnGangView(view, act) {
   const me = meOf(view);
   const hand = act.type === 'angang' ? me.hand.filter(t => t !== act.tile) : me.hand.filter((t, i) => i !== me.hand.indexOf(act.tile));
-  const fakeView = act.type === 'angang' ? withMeld(view, hand, { kind: 'gang', tile: act.tile })
-    : { ...view, players: view.players.map(p => p.seat === view.seat ? { ...p, hand, melds: p.melds.map(m => m.tile === act.tile ? { ...m, kind: 'gang' } : m) } : p) };
-  return handEfficiency(fakeView, hand);
+  const fakeView = act.type === 'angang' ? withMeld(view, hand, { kind: 'gang', tile: act.tile, gangType: 'an' })
+    : { ...view, players: view.players.map(p => p.seat === view.seat ? { ...p, hand, melds: p.melds.map(m => m.tile === act.tile ? { ...m, kind: 'gang', gangType: 'bu' } : m) } : p) };
+  return { hand, fakeView };
 }
 
 function discardPool(hand, voidSuit) {
@@ -235,13 +324,15 @@ export function analyze(view) {
 
   if (view.phase === 'turn' && view.turn === view.seat && view.actions.some(a => a.type === 'discard')) {
     // 排序与高手电脑同口径（不含防守项）；攻守判断只作为提示
-    const ev = evaluateDiscards(view, { defense: false, dangerModel: 'learned' });
+    const ev = evaluateDiscards(view, { defense: false, dangerModel: 'learned', ev: true });
     const st = stanceOf(Math.min(...ev.rows.map(r => r.shanten)), ev.threats, view.wallCount);
     out.stance = st.stance;
     out.maxThreat = +st.maxThreat.toFixed(2);
-    refineByLookahead(view, ev.rows);
-    const q = withQingBias(ev.rows, me);
-    if (q !== ev.rows[0]) { ev.rows.splice(ev.rows.indexOf(q), 1); ev.rows.unshift(q); q.qingBias = true; }
+    if (ev.rows[0].ev === undefined) {   // 与高手电脑一致：期望得分已含好形和打点，只在更远的局面用前瞻和清一色倾向
+      refineByLookahead(view, ev.rows);
+      const q = withQingBias(ev.rows, me);
+      if (q !== ev.rows[0]) { ev.rows.splice(ev.rows.indexOf(q), 1); ev.rows.unshift(q); q.qingBias = true; }
+    }
     out.candidates = ev.rows.map((r, i) => ({ id: `c${i + 1}`, ...r }));
     attachMonteCarlo(view, out.candidates);
     out.recommend = out.candidates[0] ? { action: 'discard', tile: out.candidates[0].tile, id: 'c1' } : null;
@@ -259,9 +350,9 @@ export function analyze(view) {
     const best = out.candidates[0];
     if (best && best.shanten === 0 && !best.voidLeft) out.alerts.push({ level: 'key', code: 'tenpai', text: `打 ${tileCN(best.tile)} 可听牌` });
     else if (best && best.shanten === 1) out.alerts.push({ level: 'info', code: 'oneShanten', text: '一向听' });
-    if (st.stance === 'fold') out.alerts.push({ level: 'warn', code: 'fold', text: '对手威胁高、自己进度慢：可参考危险度列考虑防守（估计值）' });
+    if (st.stance === 'fold') out.alerts.push({ level: 'warn', code: 'fold', text: '对手可能已听牌、自己进度慢（估计）。复式自对弈里弃和没有被证实有收益，危险度列仅供参考' });
   } else if ((view.phase === 'claim' || view.phase === 'robGang') && view.actions.length) {
-    out.claim = evaluateClaim(view);
+    out.claim = evaluateClaim(view, { ev: true });
     out.alerts.push({ level: 'key', code: 'claim', text: `可以${view.actions.filter(a => a.type !== 'pass').map(a => ({ hu: '胡', pong: '碰', minggang: '杠' })[a.type]).join(' / ')} ${tileCN(out.claim.tile)}` });
   }
 

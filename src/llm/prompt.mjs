@@ -5,7 +5,7 @@
 import { tileCN, FAN_LABEL } from '../core/core.mjs';
 
 const SUIT = ['万', '条', '筒'];
-const STANCE = { attack: '进攻', balance: '攻守兼顾', fold: '防守（弃和）' };
+const STANCE = { attack: '进攻', balance: '对手有一定威胁', fold: '对手可能已听牌、自己进度慢（弃和是否划算未被证实，不要直接建议弃和）' };
 /* 相对座位：0 你 / 1 下家 / 2 对家 / 3 上家 */
 export const seatName = (seat, me) => ['你', '下家', '对家', '上家'][(seat - me + 4) % 4];
 
@@ -60,6 +60,11 @@ export function serializeAnalysis(a, rules) {
         综合分: c.score
       };
       if (c.lookahead !== undefined) row.好形前瞻值 = c.lookahead;
+      if (c.ev !== undefined) {
+        row.期望得分估计 = c.ev;
+        if (c.pHu !== undefined) row.和牌率估计 = `${Math.round(c.pHu * 100)}%`;
+        if (c.pReach !== undefined) row.来得及听牌概率估计 = `${Math.round(c.pReach * 100)}%`;
+      }
       if (c.mc) { row.模拟和牌率估计 = `${Math.round(c.mc.winRate * 100)}%`; row.模拟期望得分估计 = c.mc.ev; }
       if (c.waits) row.听牌 = c.waits.map(w => `${tileCN(w.tile)}(剩${w.remain}张,${w.fan}番)`).join(' ') || '无';
       if (c.dangerBy && c.dangerBy.length) row.主要危险来自 = c.dangerBy.map(d => `${seatName(d.seat, a.seat)}${d.danger}`).join(' ');
@@ -73,6 +78,9 @@ export function serializeAnalysis(a, rules) {
     data.响应决策 = {
       对象牌: tileCN(c.tile),
       不动时: `向听 ${c.before.shanten}，有效牌 ${c.before.ukeireTotal} 张`,
+      ...(c.evPass !== undefined ? { 不动时期望得分估计: c.evPass } : {}),
+      ...(o.pong && o.pong.ev !== undefined ? { 碰的期望得分估计: `${o.pong.ev}（碰后打 ${tileCN(o.pong.evDiscard)}）` } : {}),
+      ...(o.minggang && o.minggang.ev !== undefined ? { 杠的期望得分估计: o.minggang.ev } : {}),
       ...(o.hu ? { 胡: `${o.hu.fan} 番 ${o.hu.points} 分（${o.hu.yaku.map(k => FAN_LABEL[k] || k).join('、')}）` } : {}),
       ...(o.pong ? { 碰: `碰后打 ${tileCN(o.pong.discard)}，向听 ${o.pong.shanten}，有效牌 ${o.pong.ukeireTotal} 张` } : {}),
       ...(o.minggang ? { 杠: `杠后向听 ${o.minggang.shanten}，有效牌 ${o.minggang.ukeireTotal} 张，直杠收 2 分` } : {})

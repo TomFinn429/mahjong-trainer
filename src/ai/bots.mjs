@@ -5,15 +5,25 @@
 import { shanten, toCounts, suitOf, voidEval, ukeire } from '../core/core.mjs';
 import { pending, submit, viewFor } from '../game/engine.mjs';
 import { nextRand, randInt } from '../game/rng.mjs';
-import { evaluateDiscards, evaluateClaim, evaluateTurnGang, refineByLookahead, withQingBias } from './analyzer.mjs';
+import { evaluateDiscards, evaluateClaim, evaluateTurnGang, turnGangEV, refineByLookahead, withQingBias } from './analyzer.mjs';
 import { refineByMonteCarlo } from './montecarlo.mjs';
 
 export const LEVEL_NAME = { 1: '入门', 2: '进阶', 3: '高手' };
 
-/* 高手默认策略来自复式自对弈（见 README「电脑难度实测」）：
-   一步前瞻 + 清一色倾向有显著收益；危险度防守在当前对手池里没有收益，默认关闭 */
+/* 对手池用的风格预设（都以高手为底，参数事先设定，不在评测种子上调）：
+   createBot(3, seed, STYLES.defender) */
+export const STYLES = Object.freeze({
+  defender: { ev: false, defense: true, dangerModel: 'learned', lambda: { attack: 0, balance: 2, fold: 12 } },   // 防守型：对手可能听牌且自己慢就弃和
+  bigHand: { ev: false, qingMin: 8, qingSlack: 25, pongEqual: true },                                           // 大牌型：清一色、对对胡倾向强
+  speed: { ev: false, qing: false, pongMode: 'notWorse' }                                                       // 速度型：碰了不变差就碰，不做清一色
+});
+
+/* 高手默认策略来自复式自对弈（见 README「电脑难度实测」、docs/experiments.md）：
+   听牌 / 一向听按期望得分（ev.mjs）选打，留出验证 +0.34 分/座/局；碰杠也按期望得分（evClaim），对多样对手 +0.15；
+   更远的局面用一步前瞻 + 清一色倾向；
+   危险度防守在当前对手池里没有收益，默认关闭。风格预设保持原打法（ev: false），让对手池有差异 */
 export function createBot(level, seed, opts) {
-  return { level, rng: (seed >>> 0) || 1, opts: { defense: false, balance: true, qing: true, pongEqual: false, lookahead: true, mc: false, ...(opts || {}) } };
+  return { level, rng: (seed >>> 0) || 1, opts: { defense: false, balance: true, qing: true, pongEqual: false, lookahead: true, mc: false, ev: true, evClaim: true, ...(opts || {}) } };
 }
 
 export function decide(bot, view) {
@@ -32,13 +42,20 @@ export function decide(bot, view) {
   if (view.phase === 'claim') {
     if (has('hu')) return has('hu');
     if (bot.level === 1) return has('minggang') || has('pong') || has('pass');
-    const ev = evaluateClaim(view);
+    const evClaim = bot.level === 3 && bot.opts.ev && bot.opts.evClaim;
+    const ev = evaluateClaim(view, { ev: evClaim });
+    // 期望得分：不动和至少一种副露都算得出时，直接取最大；否则退回下面的向听规则
+    if (evClaim && ev.evPass !== undefined) {
+      const opts = [['pass', ev.evPass], ['pong', ev.options.pong?.ev], ['minggang', ev.options.minggang?.ev]].filter(([t, v]) => v !== undefined && has(t));
+      if (opts.length > 1) return has(opts.reduce((a, o) => (o[1] > a[1] ? o : a))[0]);
+    }
     const b = ev.before;
     const g = ev.options.minggang;
     if (g && g.shanten <= b.shanten) return has('minggang');
     const p = ev.options.pong;
     if (p) {
       if (p.shanten < b.shanten) return has('pong');
+      if (bot.opts.pongMode === 'notWorse' && p.shanten <= b.shanten) return has('pong');
       // 高手：向听不变但手里对子多，碰了走对对胡
       if (bot.level === 3 && bot.opts.pongEqual && p.shanten === b.shanten && pairCount(me.hand) >= 4) return has('pong');
     }
@@ -47,12 +64,17 @@ export function decide(bot, view) {
 
   // 自己回合
   if (has('hu')) return has('hu');
-  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance, dangerModel: bot.opts.dangerModel, lambda: bot.opts.lambda });
+  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance, dangerModel: bot.opts.dangerModel, lambda: bot.opts.lambda, ev: bot.level === 3 && bot.opts.ev });
   const rows = ev.rows;
-  if (bot.level === 3 && bot.opts.lookahead) refineByLookahead(view, rows);
-  if (bot.level === 3 && bot.opts.mc) refineByMonteCarlo(view, rows, bot, bot.opts.mcOpts);
+  const byEV = rows[0].ev !== undefined;   // 期望得分已经包含好形和打点，不再叠加前瞻、蒙特卡洛和清一色倾向
+  if (bot.level === 3 && bot.opts.lookahead && !byEV) refineByLookahead(view, rows);
+  if (bot.level === 3 && bot.opts.mc && !byEV) refineByMonteCarlo(view, rows, bot, bot.opts.mcOpts);
   for (const a of acts.filter(a => a.type === 'angang' || a.type === 'bugang')) {
     if (bot.level === 1) return a;
+    if (byEV && bot.opts.evClaim) {
+      const ge = turnGangEV(view, a);
+      if (ge !== undefined) { if (ge > rows[0].ev) return a; continue; }
+    }
     const e = evaluateTurnGang(view, a);
     const bestSh = Math.min(...rows.map(r => r.shanten));
     if (e.shanten <= bestSh) return a;
@@ -65,7 +87,7 @@ export function decide(bot, view) {
   } else if (bot.level === 2) {
     pick = rows.slice().sort((a, b) => a.shanten - b.shanten || b.ukeireTotal - a.ukeireTotal || a.tile - b.tile)[0];
   } else {
-    pick = bot.opts.qing ? withQingBias(rows, me) : rows[0];
+    pick = bot.opts.qing && !byEV ? withQingBias(rows, me, { minTiles: bot.opts.qingMin, slack: bot.opts.qingSlack }) : rows[0];
   }
   return { type: 'discard', tile: pick.tile };
 }
