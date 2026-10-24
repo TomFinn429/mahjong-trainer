@@ -49,13 +49,39 @@ async function httpError(res) {
     try { const j = JSON.parse(text); msg = (j.error && (j.error.message || j.error.code)) || j.message || text; } catch { msg = text; }
   } catch { /* 忽略 */ }
   const hint = res.status === 401 ? '（API key 无效或未填）' : res.status === 404 ? '（地址或模型名不对）' : res.status === 429 ? '（限流或额度不足）' : '';
-  return new Error(`HTTP ${res.status}${hint}：${String(msg).slice(0, 300)}`);
+  const err = new Error(`HTTP ${res.status}${hint}：${String(msg).slice(0, 300)}`);
+  err.status = res.status;
+  return err;
 }
 
-/* 流式对话。onDelta(text) 收到正文增量，onReasoning(text) 收到思考过程增量（若服务商提供） */
-export async function chatStream(cfg, messages, { onDelta, onReasoning, signal, temperature = 0.4, maxTokens } = {}) {
+/* 思考强度（会思考的模型）：'low' → reasoning_effort: "low"（DeepSeek 官方最低档）；
+   'off' → thinking: {type: "disabled"}（DeepSeek 官方关闭思考的写法）；其他值不发送，用服务商默认。
+   不认识这些参数的服务商会返回 400：去掉参数重试一次，并在本页记住这个模型不支持 */
+const noReasoningParam = new Set();
+function reasoningParams(cfg, level) {
+  if (noReasoningParam.has(`${cfg.baseURL}|${cfg.model}`)) return null;
+  if (level === 'low') return { reasoning_effort: 'low' };
+  if (level === 'off') return { thinking: { type: 'disabled' } };
+  return null;
+}
+
+/* 流式对话。onDelta(text) 收到正文增量，onReasoning(text) 收到思考过程增量（若服务商提供）。
+   返回值的 reasoningDropped 为 true 表示服务商不接受思考强度参数，已按默认重试 */
+export async function chatStream(cfg, messages, opts = {}) {
+  const extra = reasoningParams(cfg, opts.reasoning);
+  if (!extra) return chatStreamOnce(cfg, messages, opts, null);
+  try {
+    return await chatStreamOnce(cfg, messages, opts, extra);
+  } catch (e) {
+    if (e.status !== 400) throw e;
+    noReasoningParam.add(`${cfg.baseURL}|${cfg.model}`);
+    return { ...(await chatStreamOnce(cfg, messages, opts, null)), reasoningDropped: true };
+  }
+}
+
+async function chatStreamOnce(cfg, messages, { onDelta, onReasoning, signal, temperature = 0.4, maxTokens } = {}, extra) {
   const ep = endpoint(cfg, 'chat/completions');
-  const body = { model: cfg.model, messages, stream: true, temperature };
+  const body = { model: cfg.model, messages, stream: true, temperature, ...(extra || {}) };
   if (maxTokens) body.max_tokens = maxTokens;
   let res;
   try {

@@ -36,7 +36,7 @@ function loadSettings() {
   try { o = JSON.parse(store.get(localStorage, SKEY) || '{}'); } catch { o = {}; }
   S.level = o.level || 3; S.speed = o.speed || 450;
   S.exchange = o.exchange !== false; S.practice = !!o.practice;
-  S.llm = { provider: 'deepseek', baseURL: '', model: '', viaProxy: false, detail: 'normal', autoKey: false, ...(o.llm || {}) };
+  S.llm = { provider: 'deepseek', baseURL: '', model: '', viaProxy: false, detail: 'normal', reasoning: 'low', autoKey: false, ...(o.llm || {}) };
   S.llm.apiKey = store.get(localStorage, KKEY) || store.get(sessionStorage, KKEY) || '';
   S.llm.remember = !!store.get(localStorage, KKEY);
 }
@@ -483,6 +483,10 @@ function cfgForClient() {
   return { baseURL: c.baseURL, apiKey: c.apiKey, model: c.model, viaProxy: c.viaProxy, sessionId: S.sessionId };
 }
 
+/* 输出长度上限（token）。会思考的模型（如 DeepSeek v4 系列）思考过程和正文共用这个上限，
+   给小了会出现「只有思考、没有正文」；正文长度本身由提示词约束 */
+const LLM_MAX_TOKENS = { brief: 4096, deep: 8192 };
+
 async function explain() {
   if (!S.analysis || S.llmAbort) return;
   if (S.llm.viaProxy && location.protocol === 'file:') {
@@ -502,17 +506,31 @@ async function explain() {
   $('#stopLLM').hidden = false;
   updateExplainButton(viewFor(S.g, ME));
   let text = '';
+  const deep = S.llm.detail === 'deep';
+  const ask = maxTokens => chatStream(cfgForClient(), msgs, {
+    signal: ac.signal, maxTokens, reasoning: S.llm.reasoning,
+    onDelta: d => { text += d; out.innerHTML = renderMd(text); out.scrollTop = out.scrollHeight; },
+    onReasoning: d => { $('#reasonBox').hidden = false; reason.textContent += d; reason.scrollTop = reason.scrollHeight; }
+  });
   try {
-    const r = await chatStream(cfgForClient(), msgs, {
-      signal: ac.signal,
-      maxTokens: S.llm.detail === 'deep' ? 1600 : 900,
-      onDelta: d => { text += d; out.innerHTML = renderMd(text); out.scrollTop = out.scrollHeight; },
-      onReasoning: d => { $('#reasonBox').hidden = false; reason.textContent += d; reason.scrollTop = reason.scrollHeight; }
-    });
-    if (!r.text) out.innerHTML = '<span class="warn">模型没有返回正文（可能只输出了思考过程或被截断），请重试或换模型。</span>';
+    let maxTokens = LLM_MAX_TOKENS[deep ? 'deep' : 'brief'];
+    let r = await ask(maxTokens);
+    if (!r.text && r.finish === 'length') {
+      // 思考过程用完了上限、正文没来得及输出：加倍上限重试一次
+      maxTokens *= 2;
+      out.innerHTML = '<span class="hint">思考过程用完了输出长度上限，正在加大上限重试…</span>';
+      reason.textContent = '';
+      r = await ask(maxTokens);
+    }
+    if (!r.text) {
+      out.innerHTML = r.finish === 'length'
+        ? `<span class="warn">模型的思考过程用完了输出长度上限（${maxTokens} token），没有输出正文。可在「服务商设置」把思考强度改为「关闭思考」，或换一个不带思考的模型。</span>`
+        : '<span class="warn">模型没有返回正文，请重试或换模型。</span>';
+    }
     const v = validateExplanation(r.text, analysis);
     const tips = [...v.warnings];
-    if (r.finish === 'length') tips.push('输出被长度截断，可改用「简短」');
+    if (r.finish === 'length' && r.text) tips.push(`正文被长度截断${deep ? '，可改用「简短」' : ''}`);
+    if (r.reasoningDropped) tips.push('这个服务商 / 模型不接受思考强度参数，已按服务商默认重试');
     $('#llmWarn').textContent = tips.join('；');
   } catch (e) {
     if (e.name === 'AbortError') out.innerHTML += '<p class="hint">（已停止）</p>';
@@ -556,6 +574,7 @@ function bindLLMSettings() {
   $('#apiKey').value = S.llm.apiKey;
   $('#rememberKey').checked = S.llm.remember;
   $('#detail').value = S.llm.detail;
+  $('#reasoning').value = S.llm.reasoning;
   $('#autoKey').checked = S.llm.autoKey;
   const changed = () => { saveSettings(); if (S.g) updateExplainButton(viewFor(S.g, ME)); };
   sel.addEventListener('change', () => { applyProvider(sel.value, false); changed(); });
@@ -565,6 +584,7 @@ function bindLLMSettings() {
   $('#rememberKey').addEventListener('change', e => { S.llm.remember = e.target.checked; changed(); });
   $('#viaProxy').addEventListener('change', e => { S.llm.viaProxy = e.target.checked; applyProvider(S.llm.provider, true); changed(); });
   $('#detail').addEventListener('change', e => { S.llm.detail = e.target.value; changed(); });
+  $('#reasoning').addEventListener('change', e => { S.llm.reasoning = e.target.value; changed(); });
   $('#autoKey').addEventListener('change', e => { S.llm.autoKey = e.target.checked; changed(); });
   $('#clearKey').addEventListener('click', () => {
     S.llm.apiKey = ''; $('#apiKey').value = '';
@@ -588,7 +608,7 @@ function bindLLMSettings() {
     const out = $('#llmOut');
     out.innerHTML = '<span class="hint">测试中…</span>';
     try {
-      const r = await chatStream(cfgForClient(), [{ role: 'user', content: '只回复两个字：连通' }], { maxTokens: 300 });
+      const r = await chatStream(cfgForClient(), [{ role: 'user', content: '只回复两个字：连通' }], { maxTokens: 2048, reasoning: S.llm.reasoning });
       out.innerHTML = `<span class="ok">连接成功</span>：${esc(r.text || '(无正文)')}`;
     } catch (e) { out.innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
   });

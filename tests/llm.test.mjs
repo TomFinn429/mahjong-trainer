@@ -60,6 +60,38 @@ test('chatStream：HTTP 错误给出可读提示', async () => {
   } finally { globalThis.fetch = orig; }
 });
 
+test('chatStream：思考强度参数；服务商返回 400 时去掉参数重试，并记住该模型不支持', async () => {
+  const orig = globalThis.fetch;
+  const bodies = [];
+  let reject = false;
+  globalThis.fetch = async (url, init) => {
+    const b = JSON.parse(init.body);
+    bodies.push(b);
+    if (reject && (b.reasoning_effort || b.thinking)) return new Response(JSON.stringify({ error: { message: 'unknown field reasoning_effort' } }), { status: 400 });
+    return sseResponse(['data: {"choices":[{"delta":{"content":"好"},"finish_reason":"stop"}]}\n\n', 'data: [DONE]\n\n']);
+  };
+  try {
+    const ok = { baseURL: 'https://ok.example/v1', model: 'm' };
+    await chatStream(ok, [], { reasoning: 'low' });
+    assert.equal(bodies.at(-1).reasoning_effort, 'low');
+    await chatStream(ok, [], { reasoning: 'off' });
+    assert.deepEqual(bodies.at(-1).thinking, { type: 'disabled' });
+    await chatStream(ok, [], { reasoning: 'default' });
+    assert.ok(!('reasoning_effort' in bodies.at(-1)) && !('thinking' in bodies.at(-1)));
+
+    reject = true;
+    const no = { baseURL: 'https://no.example/v1', model: 'm' };
+    const n0 = bodies.length;
+    const r = await chatStream(no, [], { reasoning: 'low' });
+    assert.equal(r.text, '好');
+    assert.equal(r.reasoningDropped, true);
+    assert.equal(bodies.length - n0, 2, '带参数被拒后不带参数重试');
+    await chatStream(no, [], { reasoning: 'low' });
+    assert.equal(bodies.length - n0, 3, '之后同一模型不再发送参数');
+    assert.ok(!('reasoning_effort' in bodies.at(-1)));
+  } finally { globalThis.fetch = orig; }
+});
+
 test('拒绝非 https 的直连地址', async () => {
   await assert.rejects(chatStream({ baseURL: 'http://a.b/v1', model: 'm' }, []), /https/);
 });

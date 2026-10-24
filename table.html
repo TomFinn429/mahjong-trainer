@@ -193,6 +193,9 @@
             <span class="lbl">Base URL</span><input type="text" id="baseURL" placeholder="https://.../v1">
             <span class="lbl">模型</span>
             <div class="bar" style="flex-wrap:nowrap"><input type="text" id="model" list="modelList" style="flex:1"><datalist id="modelList"></datalist><button id="fetchModels">获取模型</button></div>
+            <span class="lbl">思考强度</span>
+            <div><select id="reasoning"><option value="low">低（推荐）</option><option value="off">关闭思考</option><option value="default">服务商默认</option></select>
+              <div class="hint">只对会思考的模型（如 DeepSeek v4）有效：思考越短，讲解越快、越不容易被截断。服务商不支持时自动按默认处理</div></div>
             <span class="lbl">API key</span><input type="password" id="apiKey" autocomplete="off" placeholder="只保存在本机浏览器">
             <span></span><label class="hint"><input type="checkbox" id="rememberKey"> 记住 key（存 localStorage；不勾选则关闭页面即清除）</label>
             <span></span><label class="hint"><input type="checkbox" id="viaProxy"> 经本地代理（需用 <code>node server.js</code> 打开本页）</label>
