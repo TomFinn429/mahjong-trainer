@@ -21,6 +21,8 @@ export function createGame(opts = {}) {
   const g = {
     rules, seed, rng: seed,
     dealer: opts.dealer ?? 0,
+    firstHu: null,         // 本局第一次胡牌：{ seats, from }，用来定下一局庄家
+    lastDrawer: null,      // 最近一次摸牌的人；流局时就是摸最后一张牌的人
     wall: [],
     players: [],
     phase: 'exchange',
@@ -180,6 +182,7 @@ function draw(g, seat, gangDraw) {
   const tile = g.wall.shift();
   p.hand.push(tile); sortTiles(p.hand);
   p.draws++;
+  g.lastDrawer = seat;
   p.huLock = false;
   g.turn = seat;
   g.ctx = { drawn: tile, gangDraw: !!gangDraw, haiDi: g.wall.length === 0 };
@@ -376,6 +379,7 @@ function win(g, seat, tile, from, ctx) {
 }
 
 function afterWins(g, winners, origin) {
+  if (!g.firstHu) g.firstHu = { seats: winners.slice(), from: origin };
   if (activeSeats(g).length <= 1) return finish(g, 'allWon');
   // 下一个摸牌的人：从出牌者往后数，最后一个胡牌者的下家（自摸时就是胡牌者下家）
   const order = orderFrom(origin);
@@ -450,9 +454,26 @@ function finish(g, why) {
     scores: g.players.map(p => p.score),
     hands: g.players.map(p => p.hand.slice()),
     winners: g.players.filter(p => p.won).sort((a, b) => a.won.order - b.won.order).map(p => p.seat),
+    nextDealer: nextDealer(g),
     settle
   };
   emit(g, { type: 'end', reason: why, scores: g.result.scores });
+}
+
+/* 下一局庄家：本局第一个胡牌的人；第一次胡牌是一炮多响时，由点炮者（抢杠时为被抢杠者）坐庄；
+   没人胡的流局，由摸最后一张牌的人坐庄 */
+function nextDealer(g) {
+  const f = g.firstHu;
+  if (!f) return g.lastDrawer ?? g.dealer;
+  return f.seats.length > 1 ? f.from : f.seats[0];
+}
+
+/* 第一局掷骰定庄：两颗骰子，从座位 0 开始逆时针数（点数 1、5、9 是座位 0，2、6、10 是下家……）。
+   用种子派生的独立随机数，不影响发牌，同一种子结果相同 */
+export function rollDealer(seedValue) {
+  const holder = { rng: (seedFrom(seedValue) ^ 0x9E3779B9) >>> 0 };
+  const dice = [randInt(holder, 6) + 1, randInt(holder, 6) + 1];
+  return { dice, dealer: (dice[0] + dice[1] - 1) % SEATS };
 }
 
 /* 听牌时可能的最大番（不含自摸）；未听牌返回 null */

@@ -2,7 +2,7 @@
    对局界面：牌桌渲染、人类操作、电脑节奏、局势分析面板、AI 讲解
    ============================================================ */
 import { suitOf, rankOf, tileCN, FAN_LABEL } from '../core/core.mjs';
-import { createGame, pending, submit, viewFor } from '../game/engine.mjs';
+import { createGame, pending, submit, viewFor, rollDealer } from '../game/engine.mjs';
 import { createBot, decide, runBots, LEVEL_NAME } from '../ai/bots.mjs';
 import { exportRecord } from '../game/record.mjs';
 import { analyze, isKeyMoment } from '../ai/analyzer.mjs';
@@ -25,7 +25,7 @@ const store = {
 
 const S = {
   g: null, bots: [], level: 3, speed: 450, exchange: true, practice: false, reveal: false,
-  totals: [0, 0, 0, 0], games: 0, dealer: 0,
+  totals: [0, 0, 0, 0], games: 0, dealer: null,   // dealer 为 null 时下一局掷骰定庄
   selected: [], analysis: null, feedback: null, timer: null,
   llmAbort: null, explainedSeq: -1, sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))
 };
@@ -67,8 +67,15 @@ function newGame() {
   stopLLM();
   const seedText = $('#seed').value.trim();
   const seed = seedText || String(Math.floor(Math.random() * 1e9));
+  let diceText = null;
+  if (S.dealer === null) {
+    const r = rollDealer(seed);
+    S.dealer = r.dealer;
+    diceText = `掷骰 ${r.dice[0]} + ${r.dice[1]} = ${r.dice[0] + r.dice[1]}，${relName(r.dealer)}坐庄`;
+  }
   S.g = createGame({ seed, dealer: S.dealer, rules: { exchangeThree: S.exchange } });
   S.g.seedText = seed;
+  S.g.diceText = diceText;
   S.bots = [null, 1, 2, 3].map(i => i && createBot(S.level, S.g.seed * 7 + i));
   S.selected = []; S.feedback = null; S.explainedSeq = -1;
   $('#result').hidden = true;
@@ -113,7 +120,7 @@ function onEnd() {
     g.countedTotals = true;
     g.result.scores.forEach((v, i) => { S.totals[i] += v; });
     S.games++;
-    S.dealer = g.result.winners.length ? g.result.winners[0] : S.dealer;
+    S.dealer = g.result.nextDealer;
   }
   renderResult();
   renderTotals();
@@ -225,7 +232,7 @@ function renderMe(view) {
   }
   if (p.won) { hand.appendChild(document.createTextNode(' 胡 ')); hand.appendChild(tileEl(p.won.tile, { cls: 'huby' })); }
 
-  el.replaceChildren(head, meldsEl(p.melds, false), hand, actionsEl(view));
+  el.replaceChildren(head, meldsEl(p.melds, false), hand, actionsEl(view), riverEl(view, p));
 }
 
 function toggleExchange(idx, hand) {
@@ -404,6 +411,7 @@ function logLine(e) {
 
 function renderLog(view) {
   const lines = view.log.map(logLine).filter(Boolean);
+  if (S.g.diceText) lines.unshift(S.g.diceText);
   const el = $('#log');
   el.innerHTML = lines.slice(-80).map(esc).join('<br>');
   el.scrollTop = el.scrollHeight;
@@ -422,10 +430,17 @@ function renderResult() {
   el.innerHTML = `<b>本局结果（${g.result.reason === 'wall' ? '流局' : '三家已胡'}）</b>` +
     `<table><tr><th>座位</th><th>胡牌</th><th>本局</th><th>累计</th></tr>${rows}</table>` +
     (settle ? `<div class="hint" style="margin-top:6px">流局结算：${esc(settle)}</div>` : '') +
+    `<div class="hint" style="margin-top:6px">下一局庄家：${esc(relName(g.result.nextDealer))}（${esc(dealerReason(g))}）</div>` +
     '<div class="bar" style="margin-top:8px"></div>';
   el.querySelector('.bar').appendChild(btn('下一局', 'primary', () => { $('#seed').value = ''; newGame(); }));
   el.querySelector('.bar').appendChild(btn('下载牌谱', '', downloadRecord, '保存本局可重放的 JSON 牌谱（复盘 / 统计用）'));
   el.hidden = false;
+}
+
+function dealerReason(g) {
+  const f = g.firstHu;
+  if (!f) return '没人胡牌的流局，摸最后一张牌的人坐庄';
+  return f.seats.length > 1 ? '本局第一次胡牌是一炮多响，由放炮的人坐庄' : '本局第一个胡牌';
 }
 
 /* 牌谱：种子 + 规则 + 每个决定，格式见 docs/game-record.md */

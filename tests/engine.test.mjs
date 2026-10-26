@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, submit, pending, viewFor, legalActions } from '../src/game/engine.mjs';
+import { createGame, submit, pending, viewFor, legalActions, rollDealer } from '../src/game/engine.mjs';
 import { suitOf } from '../src/core/core.mjs';
 import { setup, tiles, tileCensus } from './helpers.mjs';
 
@@ -234,4 +234,60 @@ test('随机整局 300 局：牌数守恒、分数零和、正常结束', () => 
     for (const p of g.players) if (p.won) assert.equal(p.hand.length % 3, p.won.zimo ? 2 : 1, '胡牌者手牌张数');
   }
   assert.ok(ended.wall > 0 && hus > 0, JSON.stringify({ ended, hus }));
+});
+
+/* 不胡牌地把对局打完：能过就过，否则打第一张能打的牌 */
+function playOutNoHu(g) {
+  for (let guard = 0; g.phase !== 'end' && guard < 2000; guard++) {
+    for (const s of Object.keys(pending(g).seats).map(Number)) {
+      if (g.phase === 'end' || !(s in pending(g).seats)) continue;
+      const acts = legalActions(g, s);
+      submit(g, s, acts.find(a => a.type === 'pass') || acts.find(a => a.type === 'discard') || acts[0]);
+    }
+  }
+}
+
+const ONE_GUN_TWO = {
+  hands: ['5m 111p 222p 333p 444p 5p', '123m 456s 789s 123s 5m', '34m 678s 678s 234s 99s', '666p 777p 888p 999p 5p'],
+  voids: [S, P, P, M], wall: '9m 9m 8m 1s 2s 3s'
+};
+
+test('下一局庄家：第一个胡牌的人', () => {
+  const g = setup(ONE_GUN_TWO);
+  submit(g, 0, { type: 'discard', tile: tiles('5m')[0] });
+  submit(g, 1, { type: 'hu' });
+  submit(g, 2, { type: 'pass' });
+  playOutNoHu(g);
+  assert.equal(g.result.nextDealer, 1);
+});
+
+test('下一局庄家：第一次胡牌是一炮多响时由点炮者坐庄', () => {
+  const g = setup({ ...ONE_GUN_TWO, turn: 0 });
+  g.dealer = 3;
+  submit(g, 0, { type: 'discard', tile: tiles('5m')[0] });
+  submit(g, 1, { type: 'hu' });
+  submit(g, 2, { type: 'hu' });
+  playOutNoHu(g);
+  assert.equal(g.result.nextDealer, 0);
+});
+
+test('下一局庄家：没人胡的流局由摸最后一张牌的人坐庄', () => {
+  const g = setup({ ...ONE_GUN_TWO, turn: 0 });
+  playOutNoHu(g);
+  assert.equal(g.result.reason, 'wall');
+  assert.equal(g.result.winners.length, 0);
+  const lastDraw = g.log.filter(e => e.type === 'draw').at(-1);
+  assert.equal(g.result.nextDealer, lastDraw.seat);
+});
+
+test('第一局掷骰定庄：同一种子结果相同，点数从座位 0 逆时针数', () => {
+  const seen = new Set();
+  for (let i = 0; i < 200; i++) {
+    const r = rollDealer('s' + i);
+    assert.deepEqual(rollDealer('s' + i), r);
+    assert.ok(r.dice.every(d => d >= 1 && d <= 6));
+    assert.equal(r.dealer, (r.dice[0] + r.dice[1] - 1) % 4);
+    seen.add(r.dealer);
+  }
+  assert.equal(seen.size, 4);
 });
