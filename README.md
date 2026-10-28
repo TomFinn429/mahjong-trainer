@@ -30,7 +30,8 @@ npm start            # 等同于 node server.js，然后打开 http://127.0.0.1:
 | 川麻规则 | 一炮多响、过手胡、抢杠胡、刮风下雨、呼叫转移；流局时查花猪、查大叫、退税。口径见 [docs/ai-table-design.md](docs/ai-table-design.md) |
 | 电脑三档 | **入门**：向听优先，带随机失误，能碰就碰<br>**进阶**：向听 → 有效牌（扣除场上可见牌）<br>**高手**：进阶基础上再加一步前瞻（好形）和听牌质量（剩余张数 × 番数） |
 | 局势分析 | 每次轮到你时由程序计算：候选打法的向听、有效牌、听牌张数和番数、危险度估计、综合分；对手的缺门、威胁估计、是否疑似清一色；关键时刻提醒 |
-| 练习模式 | 出牌前隐藏推荐和综合分，打完再显示「你打的是第几名」 |
+| 读牌 | 每个对手暗手的花色比例、清一色概率、点他主花色的预期损失，并逐条列出牌桌上看得到的依据；候选打法显示放炮「代价」。牌河里摸切的牌底色发灰。方法见 [docs/hand-reading.md](docs/hand-reading.md) |
+| 练习模式 | 出牌前隐藏推荐和综合分，打完再显示「你打的是第几名」；对手每打一张牌，先让你猜他的主花色、是否清一色、是否听牌，再揭晓推断，局终对照真实手牌并累计命中率 |
 | 牌谱 | 每局结束可「下载牌谱」（JSON），能按种子完整重放；格式见 [docs/game-record.md](docs/game-record.md) |
 | AI 讲解 | 填 API key 后点「讲解这一手」，流式输出。关键时刻（听牌、可碰杠胡、对手威胁高、后巡、缺门未清）按钮会闪烁，也可以设为自动讲解 |
 
@@ -429,13 +430,14 @@ mahjong-trainer/
 │   ├── core/mj-core.js   # 向听 / 有效牌 / 和牌 / 番型 / 计分（训练器与对局共用）
 │   ├── core/core.mjs     # 上面的 ES 模块入口
 │   ├── game/             # 对局引擎（engine）、规则默认值（rules）、种子随机数（rng）、牌谱（record）
-│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger 启发式 / danger-model 学习型）、蒙特卡洛前瞻（montecarlo）
+│   ├── ai/               # 电脑（bots）、局势分析（analyzer）、危险度（danger 启发式 / danger-model 学习型）、读牌（infer）、期望得分（ev）、蒙特卡洛前瞻（montecarlo）
 │   ├── llm/              # 服务商、流式客户端、提示词与讲解校验
 │   └── ui/table.mjs      # 对局界面
 ├── tests/                # node:test 测试（引擎 / 电脑 / 牌谱 / 蒙特卡洛 / LLM）
 ├── docs/ai-table-design.md  # AI 对局设计与规则口径（含每条规则的出处）
 ├── docs/game-record.md   # 牌谱格式
 ├── docs/experiments.md   # 实验登记表（全部复式与模型评测结果）
+├── docs/hand-reading.md  # 读牌教学：看什么、怎么推断、怎么换算进期望得分
 ├── docs/roadmap.md       # 优化路线与任务清单
 ├── docs/screenshot.png   # 界面预览
 ├── .github/workflows/    # GitHub Actions：Node 18/20/22 跑自检
@@ -446,6 +448,9 @@ mahjong-trainer/
     ├── duplicate.mjs     # 复式自对弈：比较两种电脑配置，可指定对手池、序贯检验提前停止、导出牌谱 JSONL
     ├── style-stats.mjs   # 打法指纹：从牌谱统计胡牌率、点炮、碰杠、听牌巡目等
     ├── calibrate-mc.mjs  # 用自对弈牌谱校准蒙特卡洛的点炮系数
+    ├── fit-ev.mjs        # 拟合 / 检验期望得分模型（--live 为读牌版）
+    ├── fit-infer.mjs     # 拟合 / 检验读牌模型（花色分布、牌张位置、清一色、放炮损失）
+    ├── fit-lib.mjs       # 拟合工具共用的线性代数与广义线性模型
     ├── export-danger-data.mjs  # 牌谱 → 危险度模型训练数据
     └── py/train_danger.py      # 离线训练危险度模型，导出 src/ai/danger-weights.mjs
 ```

@@ -11,6 +11,7 @@ import { visibleCounts, allThreats, tileDanger } from './danger.mjs';
 import { estimateDiscards } from './montecarlo.mjs';
 import { evContext, handValue } from './ev.mjs';
 import { learnedThreats, learnedTileDanger } from './danger-model.mjs';
+import { readAll, expectedLoss } from './infer.mjs';
 import { seedFrom } from '../game/rng.mjs';
 
 const SUIT_NAME = ['万', '条', '筒'];
@@ -76,7 +77,9 @@ const LAMBDA = { attack: 0, balance: 1.2, fold: 12 };
 
 /* opts.dangerModel：'heuristic'（默认，danger.mjs）或 'learned'（danger-model.mjs）；
    opts.lambda：覆盖各攻守模式下危险度的权重；
-   opts.ev：最好能到一向听以内时，听牌 / 一向听的候选改按期望得分（ev.mjs）排序，排在其他候选前面 */
+   opts.ev：最好能到一向听以内时，听牌 / 一向听的候选改按期望得分（ev.mjs）排序，排在其他候选前面；
+   opts.evRisk：期望得分减去这张牌的放炮代价 Σ 学习型放炮概率 × 该对手的预期损失（读牌，infer.mjs）；
+   opts.evLive：期望得分里的和牌率用读牌版（待牌扣在对手手里的比例） */
 export function evaluateDiscards(view, opts = {}) {
   const me = meOf(view);
   const learned = opts.dangerModel === 'learned';
@@ -99,26 +102,45 @@ export function evaluateDiscards(view, opts = {}) {
     r.score = +(-r.shanten * 100 + r.ukeireTotal + waitBonus * 0.5 - lambda[st.stance] * r.danger * 100).toFixed(2);
   }
   rows.sort((a, b) => b.score - a.score || a.shanten - b.shanten || b.ukeireTotal - a.ukeireTotal || a.tile - b.tile);
-  if (opts.ev && bestSh <= 1) attachEV(view, rows, lambda[st.stance]);
+  if (opts.ev && bestSh <= 1) attachEV(view, rows, lambda[st.stance], opts);
   return { rows, threats, ...st };
 }
 
-/* 期望得分排序：放炮代价按平均点炮损失 1.6 分折算（docs/experiments.md） */
+/* 期望得分排序：防守权重 lambda 下放炮代价按平均点炮损失 1.6 分折算（docs/experiments.md）；
+   opts.evRisk 时改为不乘 lambda 的真实期望：Σ 每家放炮概率 × 点给这家的预期损失 */
 const DEAL_IN_LOSS = 1.6;
-function attachEV(view, rows, lambda) {
+function attachEV(view, rows, lambda, opts = {}) {
   const me = meOf(view);
-  const ctx = evContext(view);
+  const ctx = evContext(view, { live: !!opts.evLive });
+  const riskOf = opts.evRisk ? dealInRisk(view) : null;
   for (const r of rows) {
     if (r.shanten > 1) continue;
     const hand = me.hand.slice(); hand.splice(hand.indexOf(r.tile), 1);
     const v = handValue(ctx, hand);
     if (!v) continue;
-    r.ev = +(v.ev - lambda * r.danger * DEAL_IN_LOSS).toFixed(3);
+    let risk = lambda * r.danger * DEAL_IN_LOSS;
+    if (riskOf) { risk = riskOf(r.tile); r.risk = +risk.toFixed(3); }
+    r.ev = +(v.ev - risk).toFixed(3);
     r.pHu = v.pHu, r.pReach = v.pReach;
   }
   const has = r => r.ev !== undefined;
   if (!rows.some(has)) return;
   rows.sort((a, b) => (has(b) - has(a)) || (has(a) ? b.ev - a.ev : 0) || b.score - a.score || a.tile - b.tile);
+}
+
+/* 放炮代价（读牌，T13）：返回 tile → Σ 每家学习型放炮概率 × 点给这家的预期损失（底分）。
+   留出复式里把它扣进高手的期望得分没有收益（docs/experiments.md「读牌」），所以默认只在分析面板显示 */
+export function dealInRisk(view) {
+  const reads = readAll(view);
+  const threats = learnedThreats(view);
+  const visible = visibleCounts(view);
+  return tile => {
+    let risk = 0;
+    for (const b of learnedTileDanger(view, tile, threats, visible).by) {
+      if (reads[b.seat]) risk += b.danger * expectedLoss(view.players[b.seat], reads[b.seat], tile);
+    }
+    return risk;
+  };
 }
 
 /* 一步前瞻（好形判断）：对向听相同、有效牌接近的前几名候选，
@@ -172,7 +194,7 @@ export function withQingBias(rows, me, opts = {}) {
   return alt || best;
 }
 
-/* 碰 / 明杠 / 胡 的对比；opts.ev：同时给出不动、碰、明杠的期望得分（算不出时为 undefined） */
+/* 碰 / 明杠 / 胡 的对比；opts.ev：同时给出不动、碰、明杠的期望得分（算不出时为 undefined）；opts.live：读牌版和牌率 */
 export function evaluateClaim(view, opts = {}) {
   const me = meOf(view);
   const tile = view.claim ? view.claim.tile : view.rob ? view.rob.tile : null;
@@ -201,7 +223,7 @@ export function evaluateClaim(view, opts = {}) {
     }
   }
   if (opts.ev && view.claim) {
-    const e = claimEV(view);
+    const e = claimEV(view, !!opts.live);
     const r3 = x => (x === undefined ? undefined : +x.toFixed(3));
     out.evPass = r3(e.pass);
     if (out.options.pong && e.pong) Object.assign(out.options.pong, { ev: r3(e.pong.ev), evDiscard: e.pong.discard });
@@ -232,17 +254,17 @@ function claimedView(view, hand, meld) {
   };
 }
 
-const evOf = (view, hand) => { const v = handValue(evContext(view), hand); return v ? v.ev : undefined; };
+const evOf = (view, hand, live) => { const v = handValue(evContext(view, { live }), hand); return v ? v.ev : undefined; };
 
 /* 别人打出一张牌时：不动、碰（碰后打出期望得分最高的一张）、明杠（含杠钱）各自的期望得分 */
-export function claimEV(view) {
+export function claimEV(view, live = false) {
   const me = meOf(view);
   const tile = view.claim.tile;
-  const out = { pass: evOf(view, me.hand) };
+  const out = { pass: evOf(view, me.hand, live) };
   if (view.actions.some(a => a.type === 'pong')) {
     const hand = me.hand.slice();
     hand.splice(hand.indexOf(tile), 1); hand.splice(hand.indexOf(tile), 1);
-    const ctx = evContext(claimedView(view, hand, { kind: 'pong', tile }));
+    const ctx = evContext(claimedView(view, hand, { kind: 'pong', tile }), { live });
     for (const t of new Set(discardPool(hand, me.voidSuit))) {
       const h = hand.slice(); h.splice(h.indexOf(t), 1);
       const v = handValue(ctx, h);
@@ -251,16 +273,16 @@ export function claimEV(view) {
   }
   if (view.actions.some(a => a.type === 'minggang')) {
     const hand = me.hand.filter(t => t !== tile);
-    const v = evOf(claimedView(view, hand, { kind: 'gang', tile, gangType: 'ming' }), hand);
+    const v = evOf(claimedView(view, hand, { kind: 'gang', tile, gangType: 'ming' }), hand, live);
     if (v !== undefined) out.minggang = v + gangIncome(view, 'ming');
   }
   return out;
 }
 
 /* 自己回合的暗杠 / 补杠：杠后（等补摸）的期望得分 + 杠钱；算不出时返回 undefined */
-export function turnGangEV(view, act) {
+export function turnGangEV(view, act, live = false) {
   const { hand, fakeView } = turnGangView(view, act);
-  const v = evOf(fakeView, hand);
+  const v = evOf(fakeView, hand, live);
   return v === undefined ? undefined : v + gangIncome(view, act.type === 'angang' ? 'an' : 'bu');
 }
 
@@ -309,11 +331,14 @@ export function analyze(view) {
   // 威胁 / 危险度显示用学习模型（测试集上比启发式准，见 README）；启发式的理由保留作说明
   const threats = learnedThreats(view);
   const heur = allThreats(view);
+  const reads = readAll(view);
   for (const p of view.players) {
     if (p.seat === view.seat) continue;
     const t = threats[p.seat];
     const reasons = p.won ? t.reasons : [...t.reasons, ...heur[p.seat].reasons];
+    const r = reads[p.seat];
     out.opponents.push({
+      read: r ? { shares: r.shares.map(x => +x.toFixed(2)), top: r.top, pQing: +r.pQing.toFixed(3), lossTop: +r.lossTop.toFixed(2), reasons: r.reasons } : null,
       seat: p.seat, voidSuit: p.voidSuit, won: p.won ? { fan: p.won.fan, zimo: p.won.zimo } : null,
       melds: p.melds.map(m => ({ kind: m.kind, tile: m.tile })),
       discards: p.discards.filter(d => !d.claimed).map(d => d.tile),
@@ -334,6 +359,10 @@ export function analyze(view) {
       if (q !== ev.rows[0]) { ev.rows.splice(ev.rows.indexOf(q), 1); ev.rows.unshift(q); q.qingBias = true; }
     }
     out.candidates = ev.rows.map((r, i) => ({ id: `c${i + 1}`, ...r }));
+    if (out.candidates.some(c => c.ev !== undefined)) {   // 只显示，不改排序
+      const riskOf = dealInRisk(view);
+      for (const c of out.candidates) if (c.ev !== undefined) c.risk = +riskOf(c.tile).toFixed(3);
+    }
     attachMonteCarlo(view, out.candidates);
     out.recommend = out.candidates[0] ? { action: 'discard', tile: out.candidates[0].tile, id: 'c1' } : null;
     const d = decompose(usable(toCounts(me.hand), me.voidSuit), me.melds.length);
@@ -357,7 +386,7 @@ export function analyze(view) {
   }
 
   for (const o of out.opponents) {
-    if (o.threat >= 0.5) out.alerts.push({ level: 'warn', code: 'oppThreat', text: `${REL[(o.seat - view.seat + 4) % 4]}威胁较高（${o.reasons.join('、')}）` });
+    if (o.threat >= 0.5) out.alerts.push({ level: 'warn', code: 'oppThreat', seat: o.seat, text: `${REL[(o.seat - view.seat + 4) % 4]}威胁较高（${o.reasons.join('、')}）` });
   }
   const last = view.log[view.log.length - 1];
   const recentMeld = view.log.slice(-6).filter(e => (e.type === 'pong' || e.type === 'gang') && e.seat !== view.seat);

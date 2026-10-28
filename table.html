@@ -10,11 +10,11 @@
     --bg:#f6f7f9; --fg:#1f2430; --mut:#6b7280; --line:#e3e6eb; --card:#fff;
     --ok:#2f855a; --okbg:#e6f6ec; --bad:#c53030; --badbg:#fdeaea;
     --acc:#2b6cb0; --accbg:#eaf2fb; --warn:#b7791f; --warnbg:#fdf6e7;
-    --felt:#eef3ef; --tile:#fff; --tileline:#d3d8e0;
+    --felt:#eef3ef; --tile:#fff; --tileline:#d3d8e0; --tsumo:#e4e7ec;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#14171c; --fg:#e5e7eb; --mut:#9aa3b2; --line:#2c323c; --card:#1b1f26;
-      --okbg:#173326; --badbg:#3a1d1d; --accbg:#1b2c42; --warnbg:#3a2f16; --felt:#18221c; --tile:#f4f1ea; --tileline:#8b8f96; }
+      --okbg:#173326; --badbg:#3a1d1d; --accbg:#1b2c42; --warnbg:#3a2f16; --felt:#18221c; --tile:#f4f1ea; --tileline:#8b8f96; --tsumo:#b9bcc2; }
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -86,6 +86,7 @@
   .tile.claimed{opacity:.35}
   .tile.huby{box-shadow:0 0 0 2px var(--bad)}
   .tile.dimmed{opacity:.45}
+  .tile.tsumo{background:var(--tsumo)}
   .hand{display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end;margin:6px 0}
   .hand .gap{width:12px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;min-height:32px;align-items:center}
@@ -105,6 +106,17 @@
   .opp{font-size:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:2px 0}
   .meter{display:inline-block;width:60px;height:6px;border-radius:3px;background:var(--line);overflow:hidden;vertical-align:middle}
   .meter i{display:block;height:100%;background:var(--bad)}
+  /* 读牌 */
+  .read{font-size:12px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:6px}
+  .read .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px}
+  .read .opt{padding:1px 8px;font-size:12px}
+  .read ul{margin:4px 0 0;padding-left:18px;color:var(--mut)}
+  .sbar{display:inline-flex;width:120px;height:8px;border-radius:4px;overflow:hidden;background:var(--line);vertical-align:middle}
+  .sbar i{display:block;height:100%}
+  .sbar .w{background:#2b6cb0}.sbar .t{background:#2f855a}.sbar .d{background:#c05621}
+  table.reads{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  table.reads td,table.reads th{padding:3px 5px;border-bottom:1px solid var(--line);text-align:left}
+  .hit{color:var(--ok)}.miss{color:var(--bad)}
 
   /* LLM */
   .llm-out{white-space:normal;font-size:13px;line-height:1.7;min-height:60px;max-height:440px;overflow:auto;

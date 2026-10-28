@@ -253,9 +253,11 @@ function resolveTurn(g, seat, act) {
   }
   // discard
   removeN(p.hand, act.tile, 1);
-  p.discards.push({ tile: act.tile, claimed: false });
+  // 摸切：打出的牌与刚摸到的牌相同（动作只带牌号，手里另有同样的牌时也算摸切）；碰后出牌没有摸牌，算手切
+  const tsumogiri = g.ctx.drawn !== null && g.ctx.drawn !== undefined && act.tile === g.ctx.drawn;
+  p.discards.push({ tile: act.tile, claimed: false, tsumogiri });
   const afterGang = g.ctx.gangDraw ? g.gangs[g.gangs.length - 1] : null;
-  emit(g, { type: 'discard', seat, tile: act.tile, afterGang: !!afterGang });
+  emit(g, { type: 'discard', seat, tile: act.tile, afterGang: !!afterGang, tsumogiri });
   openClaim(g, seat, act.tile, afterGang);
 }
 

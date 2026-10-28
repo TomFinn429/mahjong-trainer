@@ -3,6 +3,8 @@
    只用可见信息；只评估听牌和一向听（缺门已打完），更远的局面返回 null，由综合分处理
    - 听牌：V0 = a × P(和) × G + b × P(和) + c
        P(和)：逻辑回归，特征是待牌剩余张数、牌墙剩余、未胡人数（ev-weights.mjs，tools/fit-ev.mjs 从牌谱拟合）
+       读牌版（evContext(view, { live: true })）多一个特征：待牌里估计扣在对手暗手的比例（infer.mjs，roadmap T13），
+       权重在 ev-weights-live.mjs（tools/fit-ev.mjs fit --live）
        G：胡了平均收入，按每张待牌的剩余张数加权；自摸收 (未胡人数 − 1) 家、点炮收 1 家，自摸占比按未胡人数取实测值
        a、b、c：把「和牌率 × 收入」校准到实测的本局剩余得分（c 近似「一直不胡」时的得分，含别人胡牌时的支出）
    - 一向听：V1 = P(来得及听牌) × 平均[摸到每张有效牌后最好的 V0] + (1 − P(来得及听牌)) × c，再做一次线性校准（calib1）
@@ -13,29 +15,44 @@ import { shanten, toCounts, suitOf, isWinHand } from '../core/core.mjs';
 import { evalWin } from '../game/engine.mjs';
 import { visibleCounts } from './danger.mjs';
 import { EV_WEIGHTS } from './ev-weights.mjs';
+import { EV_WEIGHTS_LIVE } from './ev-weights-live.mjs';
+import { readAll, inHandsExpect } from './infer.mjs';
 
 const WALL0 = 55;   // 发完牌后牌墙张数，用来把牌墙剩余缩放到 0–1
 
-/* 逻辑回归特征：和 tools/fit-ev.mjs 共用，改动时两边一起重拟合 */
-export function pHuFeatures(remain, wall, active) {
+/* 逻辑回归特征：和 tools/fit-ev.mjs 共用，改动时两边一起重拟合；inHands 只在读牌版里给出 */
+export function pHuFeatures(remain, wall, active, inHands) {
   const r = Math.log1p(remain), w = wall / WALL0;
-  return [1, r, w, w * w, r * w, active === 3 ? 1 : 0, active <= 2 ? 1 : 0];
+  const x = [1, r, w, w * w, r * w, active === 3 ? 1 : 0, active <= 2 ? 1 : 0];
+  if (inHands !== undefined) x.push(inHands);
+  return x;
+}
+
+/* 待牌里估计扣在对手暗手的比例（按剩余张数加权）；没有剩余时为 0 */
+export function inHandsShare(ctx, waits) {
+  let R = 0, H = 0;
+  for (const w of waits) { R += w.remain; H += Math.min(w.remain, ctx.inHands[w.tile]); }
+  return R > 0 ? H / R : 0;
 }
 
 const sigmoid = z => 1 / (1 + Math.exp(-z));
 
-/* 当前视角下 EV 需要的公共信息（每个决定算一次） */
-export function evContext(view) {
+/* 当前视角下 EV 需要的公共信息（每个决定算一次）
+   opts.live：读牌版（对手暗手的牌张推断进入 P(和)）；opts.weights：覆盖权重（离线比较用） */
+export function evContext(view, opts = {}) {
   const me = view.players[view.seat];
   const vis = visibleCounts(view);
   let seen = 0;
   for (let k = 0; k < 27; k++) seen += vis[k];
+  const unseen = vis.map(v => Math.max(0, 4 - v));
   for (const t of me.hand) vis[t]--;          // 只留别人那边看得到的张数，自己的牌按手牌计数扣
+  const live = !!opts.live;
   return {
+    live, inHands: live ? inHandsExpect(readAll(view), unseen) : null,
     rules: view.rules, melds: me.melds, openN: me.melds.length, voidSuit: me.voidSuit,
     vis, unseen: 108 - seen, wall: view.wallCount,
     active: view.players.filter(p => !p.won).length,
-    w: EV_WEIGHTS, cache: new Map()
+    w: opts.weights || (live ? EV_WEIGHTS_LIVE : EV_WEIGHTS), cache: new Map()
   };
 }
 
@@ -103,7 +120,7 @@ function v0(ctx, counts, wall) {
   let waits = ctx.cache.get(hand);
   if (!waits) { waits = tenpaiWaits(ctx, counts); ctx.cache.set(hand, waits); }
   const R = waits.reduce((a, w) => a + w.remain, 0);
-  const x = pHuFeatures(R, wall, ctx.active);
+  const x = pHuFeatures(R, wall, ctx.active, ctx.live ? inHandsShare(ctx, waits) : undefined);
   const p = sigmoid(x.reduce((a, xi, i) => a + xi * ctx.w.pHu[i], 0));
   const G = expectedGain(waits, ctx.active, ctx.w.pz);
   const { a, b, c } = ctx.w.calib;

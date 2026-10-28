@@ -43,7 +43,7 @@ export function decide(bot, view) {
     if (has('hu')) return has('hu');
     if (bot.level === 1) return has('minggang') || has('pong') || has('pass');
     const evClaim = bot.level === 3 && bot.opts.ev && bot.opts.evClaim;
-    const ev = evaluateClaim(view, { ev: evClaim });
+    const ev = evaluateClaim(view, { ev: evClaim, live: bot.opts.evLive });
     // 期望得分：不动和至少一种副露都算得出时，直接取最大；否则退回下面的向听规则
     if (evClaim && ev.evPass !== undefined) {
       const opts = [['pass', ev.evPass], ['pong', ev.options.pong?.ev], ['minggang', ev.options.minggang?.ev]].filter(([t, v]) => v !== undefined && has(t));
@@ -64,7 +64,7 @@ export function decide(bot, view) {
 
   // 自己回合
   if (has('hu')) return has('hu');
-  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance, dangerModel: bot.opts.dangerModel, lambda: bot.opts.lambda, ev: bot.level === 3 && bot.opts.ev });
+  const ev = evaluateDiscards(view, { defense: bot.level === 3 && bot.opts.defense, balance: bot.opts.balance, dangerModel: bot.opts.dangerModel, lambda: bot.opts.lambda, ev: bot.level === 3 && bot.opts.ev, evRisk: bot.opts.evRisk, evLive: bot.opts.evLive });
   const rows = ev.rows;
   const byEV = rows[0].ev !== undefined;   // 期望得分已经包含好形和打点，不再叠加前瞻、蒙特卡洛和清一色倾向
   if (bot.level === 3 && bot.opts.lookahead && !byEV) refineByLookahead(view, rows);
@@ -72,7 +72,7 @@ export function decide(bot, view) {
   for (const a of acts.filter(a => a.type === 'angang' || a.type === 'bugang')) {
     if (bot.level === 1) return a;
     if (byEV && bot.opts.evClaim) {
-      const ge = turnGangEV(view, a);
+      const ge = turnGangEV(view, a, bot.opts.evLive);
       if (ge !== undefined) { if (ge > rows[0].ev) return a; continue; }
     }
     const e = evaluateTurnGang(view, a);

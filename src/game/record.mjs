@@ -48,11 +48,21 @@ export function replayRecord(rec, { onDecision, verify = true } = {}) {
   if (verify && rec.events) {
     const n = Math.max(rec.events.length, g.log.length);
     for (let i = 0; i < n; i++) {
-      const a = JSON.stringify(rec.events[i]), b = JSON.stringify(g.log[i]);
+      const a = JSON.stringify(rec.events[i]), b = JSON.stringify(compatEvent(rec.events[i], g.log[i]));
       if (a !== b) throw new Error(`重放不一致：事件 ${i}\n  牌谱：${a}\n  重放：${b}`);
     }
   }
   return g;
+}
+
+/* 旧牌谱（版本号相同，只少新增字段）：牌谱事件里没有的新字段，比对时从重放事件里去掉 */
+const ADDED_FIELDS = { discard: ['tsumogiri'] };
+function compatEvent(old, cur) {
+  const added = cur && old && ADDED_FIELDS[cur.type];
+  if (!added || !added.some(k => !(k in old) && k in cur)) return cur;
+  const out = { ...cur };
+  for (const k of added) if (!(k in old)) delete out[k];
+  return out;
 }
 
 /* 决策样本：每个决定一条，只含该座位当时可见的信息（不含事件流和规则，牌河顺序已在 discards 里） */

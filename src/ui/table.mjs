@@ -1,7 +1,7 @@
 /* ============================================================
    对局界面：牌桌渲染、人类操作、电脑节奏、局势分析面板、AI 讲解
    ============================================================ */
-import { suitOf, rankOf, tileCN, FAN_LABEL } from '../core/core.mjs';
+import { suitOf, rankOf, tileCN, FAN_LABEL, shanten, toCounts } from '../core/core.mjs';
 import { createGame, pending, submit, viewFor, rollDealer } from '../game/engine.mjs';
 import { createBot, decide, runBots, LEVEL_NAME } from '../ai/bots.mjs';
 import { exportRecord } from '../game/record.mjs';
@@ -16,6 +16,7 @@ const SUIT_CN = ['万', '条', '筒'];
 const SUIT_CLS = ['w', 't', 'd'];
 const SKEY = 'mjtable.settings.v1';
 const KKEY = 'mjtable.apikey.v1';
+const RKEY = 'mjtable.readstats.v1';
 
 const store = {
   get(area, k) { try { return area.getItem(k); } catch { return null; } },
@@ -27,6 +28,7 @@ const S = {
   g: null, bots: [], level: 3, speed: 450, exchange: true, practice: false, reveal: false,
   totals: [0, 0, 0, 0], games: 0, dealer: null,   // dealer 为 null 时下一局掷骰定庄
   selected: [], analysis: null, feedback: null, timer: null,
+  guesses: [], quiz: {}, readOpen: {},   // 读牌练习：本局的猜测记录、正在选的答案、揭晓时对手已打几张
   llmAbort: null, explainedSeq: -1, sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))
 };
 
@@ -78,6 +80,7 @@ function newGame() {
   S.g.diceText = diceText;
   S.bots = [null, 1, 2, 3].map(i => i && createBot(S.level, S.g.seed * 7 + i));
   S.selected = []; S.feedback = null; S.explainedSeq = -1;
+  S.guesses = []; S.quiz = {}; S.readOpen = {};
   $('#result').hidden = true;
   $('#llmWarn').textContent = '';
   $('#llmOut').innerHTML = '<span class="hint">在你的回合点「讲解这一手」。</span>';
@@ -121,6 +124,7 @@ function onEnd() {
     g.result.scores.forEach((v, i) => { S.totals[i] += v; });
     S.games++;
     S.dealer = g.result.nextDealer;
+    if (S.guesses.length) saveReadStats();
   }
   renderResult();
   renderTotals();
@@ -150,7 +154,7 @@ function renderOpp(view, s) {
     (s === g.dealer ? '<span class="badge">庄</span>' : '') +
     (p.voidSuit !== null ? `<span class="badge void">缺${SUIT_CN[p.voidSuit]}</span>` : '') +
     (p.won ? `<span class="badge win">第${p.won.order}胡 ${p.won.zimo ? '自摸' : '点炮'} ${p.won.fan}番</span>` : '') +
-    (opp && !p.won && opp.threat >= 0.5 ? `<span class="badge threat">威胁 ${opp.threat}</span>` : '') +
+    (opp && !p.won && opp.threat >= 0.5 && !quizHides(s, p) ? `<span class="badge threat">威胁 ${opp.threat}</span>` : '') +
     `<span class="badge">${p.score >= 0 ? '+' : ''}${p.score}</span>`;
   const hand = document.createElement('div');
   hand.className = 'river';
@@ -186,8 +190,10 @@ function riverEl(view, p) {
   p.discards.forEach((d, i) => {
     let cls = d.claimed ? 'claimed' : '';
     if (d.huBy) cls = 'huby';
+    if (d.tsumogiri) cls += ' tsumo';
     if (last && i === p.discards.length - 1) cls += ' last';
-    box.appendChild(tileEl(d.tile, { sm: true, cls, title: tileCN(d.tile) + (d.claimed ? '（被碰/杠）' : d.huBy ? '（被胡）' : '') }));
+    const how = d.tsumogiri === true ? '摸切' : d.tsumogiri === false ? '手切' : '';
+    box.appendChild(tileEl(d.tile, { sm: true, cls, title: tileCN(d.tile) + (how ? ' ' + how : '') + (d.claimed ? '（被碰/杠）' : d.huBy ? '（被胡）' : '') }));
   });
   return box;
 }
@@ -349,7 +355,8 @@ function renderAnalysis(view) {
     el.innerHTML = parts.join('') + `<div class="hint">${tip}</div>`;
     return;
   }
-  if (a.alerts.length) parts.push('<div class="alerts">' + a.alerts.map(x => `<div class="alert ${x.level}">${esc(x.text)}</div>`).join('') + '</div>');
+  const alerts = a.alerts.filter(x => !(x.code === 'oppThreat' && quizHides(x.seat, view.players[x.seat])));   // 练习模式下没揭晓前不泄露听牌估计
+  if (alerts.length) parts.push('<div class="alerts">' + alerts.map(x => `<div class="alert ${x.level}">${esc(x.text)}</div>`).join('') + '</div>');
   if (a.candidates) {
     const hide = S.practice;
     parts.push(`<table class="cand"><tr><th>打出</th><th>向听</th><th>有效牌</th><th>危险（估）</th>${hide ? '' : '<th>综合</th>'}</tr>`);
@@ -360,7 +367,7 @@ function renderAnalysis(view) {
       const odds = !hide && c.ev !== undefined ? (c.pHu !== undefined ? `和牌率约 ${Math.round(c.pHu * 100)}%` : `来得及听牌约 ${Math.round(c.pReach * 100)}%`) : '';
       parts.push(`<tr class="${!hide && i === 0 ? 'best' : ''}" data-tile="${c.tile}"><td>${c.id} ${tileCN(c.tile)}</td><td>${c.shanten}</td>` +
         `<td title="${esc(uk)}">${c.ukeireTotal} 张${waits ? '<br><span class="hint">' + esc(waits) + '</span>' : ''}${odds ? '<br><span class="hint">' + esc(odds) + '</span>' : ''}${mc ? '<br><span class="hint" title="只模拟自己往后的摸打，是估计值">' + esc(mc) + '</span>' : ''}</td>` +
-        `<td><span class="dbar" style="width:${Math.round(c.danger * 60) + 2}px"></span> ${c.danger}</td>${hide ? '' : `<td>${c.ev !== undefined ? `<span title="本局剩余部分的期望得分（底分），按自对弈牌谱拟合">期望 ${c.ev >= 0 ? '+' : ''}${c.ev.toFixed(2)}</span>` : c.score}</td>`}</tr>`);
+        `<td><span class="dbar" style="width:${Math.round(c.danger * 60) + 2}px"></span> ${c.danger}${!hide && c.risk ? `<br><span class="hint" title="Σ 每家放炮概率 × 点给这家的预期损失（读牌）。复式实测扣掉它排序没有收益，所以不参与排序">代价 ${c.risk.toFixed(2)}${c.ev !== undefined ? `，扣后 ${(c.ev - c.risk).toFixed(2)}` : ''}</span>` : ''}</td>${hide ? '' : `<td>${c.ev !== undefined ? `<span title="本局剩余部分的期望得分（底分），按自对弈牌谱拟合">期望 ${c.ev >= 0 ? '+' : ''}${c.ev.toFixed(2)}</span>` : c.score}</td>`}</tr>`);
     });
     parts.push('</table>');
     if (hide) parts.push('<div class="hint">练习模式：已隐藏推荐与综合分，出牌后显示对照。</div>');
@@ -374,19 +381,129 @@ function renderAnalysis(view) {
       (o.pong.ev === undefined || S.practice ? '' : o.pong.evDiscard === o.pong.discard ? evTxt(o.pong.ev) : `；按期望得分碰后打 ${tileCN(o.pong.evDiscard)}${evTxt(o.pong.ev)}`) + '</div>');
     if (o.minggang) parts.push(`<div class="alert">杠：向听 ${o.minggang.shanten}，有效牌 ${o.minggang.ukeireTotal} 张，直杠收 2 分${evTxt(o.minggang.ev)}</div>`);
   }
-  parts.push('<div style="margin-top:8px">' + a.opponents.map(o =>
-    `<div class="opp"><b>${esc(relName(o.seat))}</b>` +
-    (o.won ? '<span class="badge win">已胡</span>' : `<span class="meter"><i style="width:${Math.round(o.threat * 100)}%"></i></span> 威胁 ${o.threat}`) +
-    (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}${o.voidCleared ? '（已打完）' : ''}` : '') +
-    (o.suspectSuit !== null ? ` · 疑似清一色${SUIT_CN[o.suspectSuit]}` : '') +
-    (!o.won && o.reasons.length ? ` <span class="hint">${esc(o.reasons.join('、'))}</span>` : '') + '</div>').join('') + '</div>');
-  parts.push('<div class="hint" style="margin-top:6px">危险度（放炮概率）与威胁（听牌概率）是用电脑自对弈牌谱训练的模型估计，对真人对手可能偏差；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。听牌 / 一向听时按「期望」排序：本局剩余部分的期望得分（底分），由自对弈牌谱拟合的和牌率与胡牌收入估计，排在综合分候选前面。</div>');
+  parts.push('<div style="margin-top:8px">' + a.opponents.map(o => {
+    const p = view.players[o.seat];
+    if (quizHides(o.seat, p)) return `<div class="opp"><b>${esc(relName(o.seat))}</b>` + (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}` : '') + '</div>' + quizHTML(o, p);
+    return `<div class="opp"><b>${esc(relName(o.seat))}</b>` +
+      (o.won ? '<span class="badge win">已胡</span>' : `<span class="meter"><i style="width:${Math.round(o.threat * 100)}%"></i></span> 威胁 ${o.threat}`) +
+      (o.voidSuit !== null ? ` · 缺${SUIT_CN[o.voidSuit]}${o.voidCleared ? '（已打完）' : ''}` : '') +
+      (o.suspectSuit !== null ? ` · 疑似清一色${SUIT_CN[o.suspectSuit]}` : '') +
+      (!o.won && o.reasons.length ? ` <span class="hint">${esc(o.reasons.join('、'))}</span>` : '') + '</div>' + readHTML(o, p);
+  }).join('') + '</div>');
+  parts.push('<div class="hint" style="margin-top:6px">读牌（花色比例、清一色概率、点给他的预期损失）由自对弈牌谱拟合，方法见 docs/hand-reading.md；牌河里底色发灰的是摸切。危险度（放炮概率）与威胁（听牌概率）是用电脑自对弈牌谱训练的模型估计，对真人对手可能偏差；对手缺门花色的牌对他绝对安全。「模拟」是随机补全未知牌后的和牌率与期望得分估计，不参与排序。听牌 / 一向听时按「期望」排序：本局剩余部分的期望得分（底分），由自对弈牌谱拟合的和牌率与胡牌收入估计，排在综合分候选前面。</div>');
   el.innerHTML = parts.join('');
   el.querySelectorAll('tr[data-tile]').forEach(tr => {
     const t = tr.dataset.tile;
     tr.addEventListener('mouseenter', () => document.querySelectorAll(`#seat0 .hand .tile[data-tile="${t}"]`).forEach(x => x.classList.add('hl')));
     tr.addEventListener('mouseleave', () => document.querySelectorAll('#seat0 .tile.hl').forEach(x => x.classList.remove('hl')));
   });
+  el.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => {
+    const [seat, k, v] = b.dataset.q.split('|');
+    const q = (S.quiz[seat] ||= {});
+    q[k] = q[k] === +v ? undefined : +v;
+    renderAnalysis(viewFor(S.g, ME));
+  }));
+  el.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => revealRead(+b.dataset.reveal)));
+}
+
+/* ---------- 读牌：练习模式先猜后揭晓，局终用真实手牌对照 ---------- */
+/* 练习模式下，对手每打一张新牌，就先藏起威胁和读牌，让你先猜 */
+function quizHides(seat, p) {
+  return S.practice && S.analysis && !p.won && S.readOpen[seat] !== p.discards.length &&
+    S.analysis.opponents.some(o => o.seat === seat && o.read);
+}
+
+function quizHTML(o, p) {
+  const q = S.quiz[o.seat] || {};
+  const opt = (k, v, label) => `<button class="opt${q[k] === v ? ' on' : ''}" data-q="${o.seat}|${k}|${v}">${label}</button>`;
+  const suits = [0, 1, 2].filter(s => s !== p.voidSuit);
+  return `<div class="read"><b>先猜：${esc(relName(o.seat))}在做什么？</b>` +
+    `<div class="row">主花色 ${suits.map(s => opt('suit', s, SUIT_CN[s])).join('')}</div>` +
+    `<div class="row">清一色 ${opt('qing', 1, '是')}${opt('qing', 0, '否')}</div>` +
+    `<div class="row">已听牌 ${opt('tenpai', 1, '是')}${opt('tenpai', 0, '否')}</div>` +
+    `<div class="row"><button class="opt primary" data-reveal="${o.seat}">揭晓推断</button><span class="hint">没选的项不计分；他再打一张牌后可以再猜，局终对照真实手牌</span></div></div>`;
+}
+
+/* 程序的「答案」：主花色按暗手估计张数 + 副露张数取最多；清一色、听牌按 50% 判断 */
+function progPick(o, p) {
+  const r = o.read;
+  const n = [0, 1, 2].map(s => r.shares[s] * p.handCount + 3 * p.melds.filter(m => suitOf(m.tile) === s).length);
+  return { suit: n.indexOf(Math.max(...n)), qing: r.pQing >= 0.5 ? 1 : 0, tenpai: o.threat >= 0.5 ? 1 : 0 };
+}
+
+/* 那一刻的真实情况：只记下来，局终才显示 */
+function truthNow(seat) {
+  const q = S.g.players[seat];
+  const tot = [0, 1, 2].map(s => q.hand.filter(t => suitOf(t) === s).length + 3 * q.melds.filter(m => suitOf(m.tile) === s).length);
+  const max = Math.max(...tot);
+  return {
+    suits: [0, 1, 2].filter(s => tot[s] === max),
+    qing: tot[0] + tot[1] + tot[2] - max <= 1 ? 1 : 0,
+    tenpai: !q.hand.some(t => suitOf(t) === q.voidSuit) && shanten(toCounts(q.hand), q.melds.length) === 0 ? 1 : 0
+  };
+}
+
+function revealRead(seat) {
+  const view = viewFor(S.g, ME);
+  const p = view.players[seat];
+  const o = S.analysis && S.analysis.opponents.find(x => x.seat === seat);
+  if (!o || !o.read) return;
+  S.guesses.push({ seat, n: p.discards.length, wall: view.wallCount, mine: { ...(S.quiz[seat] || {}) }, prog: progPick(o, p), truth: truthNow(seat) });
+  S.readOpen[seat] = p.discards.length;
+  S.quiz[seat] = {};
+  renderOpp(view, seat);
+  renderAnalysis(view);
+}
+
+function readHTML(o, p) {
+  const r = o.read;
+  if (!r) return '';
+  const bar = `<span class="sbar">${[0, 1, 2].map(s => `<i class="${SUIT_CLS[s]}" style="width:${(r.shares[s] * 100).toFixed(1)}%"></i>`).join('')}</span>`;
+  const sh = [0, 1, 2].filter(s => r.shares[s] >= 0.005).map(s => `${SUIT_CN[s]} ${Math.round(r.shares[s] * 100)}%`).join(' · ');
+  const last = S.practice ? S.guesses.filter(x => x.seat === o.seat && x.n === p.discards.length).pop() : null;
+  const fmt = g => [g.suit !== undefined ? `主花色${SUIT_CN[g.suit]}` : '', g.qing !== undefined ? (g.qing ? '清一色' : '不是清一色') : '', g.tenpai !== undefined ? (g.tenpai ? '已听牌' : '未听牌') : ''].filter(Boolean).join('、') || '没猜';
+  return `<div class="read"><div class="row">暗手花色 ${bar} ${esc(sh)}</div>` +
+    `<div class="row">清一色 ${Math.round(r.pQing * 100)}% · 听牌 ${Math.round(o.threat * 100)}% · 点给他${SUIT_CN[r.top]}牌平均约 ${r.lossTop} 分</div>` +
+    (last ? `<div class="row">你猜：${esc(fmt(last.mine))}；程序：${esc(fmt(last.prog))}<span class="hint">（局终对照）</span></div>` : '') +
+    `<ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+}
+
+function readStats() {
+  try { const o = JSON.parse(store.get(localStorage, RKEY) || 'null'); if (o && o.suit) return o; } catch { /* 忽略 */ }
+  return { games: 0, suit: [0, 0, 0], qing: [0, 0, 0], tenpai: [0, 0, 0] };   // 每项：[你猜对, 程序猜对, 你猜了几次]
+}
+
+function scoreGuess(g, k) {
+  if (g.mine[k] === undefined) return null;
+  const ok = v => (k === 'suit' ? g.truth.suits.includes(v) : v === g.truth[k]);
+  return { me: ok(g.mine[k]), prog: ok(g.prog[k]) };
+}
+
+function saveReadStats() {
+  const st = readStats();
+  st.games++;
+  for (const g of S.guesses) for (const k of ['suit', 'qing', 'tenpai']) {
+    const r = scoreGuess(g, k);
+    if (!r) continue;
+    st[k][0] += r.me; st[k][1] += r.prog; st[k][2]++;
+  }
+  store.set(localStorage, RKEY, JSON.stringify(st));
+}
+
+function readsResultHTML() {
+  if (!S.guesses.length) return '';
+  const cell = (g, k, show) => {
+    const r = scoreGuess(g, k);
+    if (!r) return '<td class="hint">—</td>';
+    const t = k === 'suit' ? g.truth.suits.map(s => SUIT_CN[s]).join('/') : show(g.truth[k]);
+    return `<td><span class="${r.me ? 'hit' : 'miss'}">你 ${show(g.mine[k])}</span> · <span class="${r.prog ? 'hit' : 'miss'}">程序 ${show(g.prog[k])}</span> · 实际 ${t}</td>`;
+  };
+  const yn = v => (v ? '是' : '否');
+  const rows = S.guesses.map(g => `<tr><td>${esc(relName(g.seat))} 第 ${g.n} 张后</td>${cell(g, 'suit', v => SUIT_CN[v])}${cell(g, 'qing', yn)}${cell(g, 'tenpai', yn)}</tr>`).join('');
+  const st = readStats();
+  const rate = k => (st[k][2] ? `你 ${st[k][0]}/${st[k][2]}，程序 ${st[k][1]}/${st[k][2]}` : '—');
+  return `<div style="margin-top:8px"><b>读牌练习对照</b><table class="reads"><tr><th>时刻</th><th>主花色</th><th>清一色</th><th>听牌</th></tr>${rows}</table>` +
+    `<div class="hint" style="margin-top:4px">累计 ${st.games} 局（只算你猜了的项）：主花色 ${rate('suit')}；清一色 ${rate('qing')}；听牌 ${rate('tenpai')}</div></div>`;
 }
 
 const PAY_REASON = { zimo: '自摸', dianPao: '点炮', qiangGang: '抢杠', gang: '杠', callTransfer: '呼叫转移', huazhu: '查花猪', dajiao: '查大叫', taxRefund: '退税' };
@@ -431,6 +548,7 @@ function renderResult() {
     `<table><tr><th>座位</th><th>胡牌</th><th>本局</th><th>累计</th></tr>${rows}</table>` +
     (settle ? `<div class="hint" style="margin-top:6px">流局结算：${esc(settle)}</div>` : '') +
     `<div class="hint" style="margin-top:6px">下一局庄家：${esc(relName(g.result.nextDealer))}（${esc(dealerReason(g))}）</div>` +
+    readsResultHTML() +
     '<div class="bar" style="margin-top:8px"></div>';
   el.querySelector('.bar').appendChild(btn('下一局', 'primary', () => { $('#seed').value = ''; newGame(); }));
   el.querySelector('.bar').appendChild(btn('下载牌谱', '', downloadRecord, '保存本局可重放的 JSON 牌谱（复盘 / 统计用）'));

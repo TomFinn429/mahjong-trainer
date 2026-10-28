@@ -3,17 +3,28 @@
      node tools/fit-ev.mjs fit   <牌谱.jsonl> [...]   从听牌局面拟合 P(和)、自摸占比、得分校准，写 src/ai/ev-weights.mjs
      node tools/fit-ev.mjs check <牌谱.jsonl> [...]   用留出牌谱检验：预测和牌率、预测得分与实际的分桶对比
                                                        （一向听每 --every 个样本取 1 个，默认 5，算得慢）
+   选项：--live           读牌版：P(和) 多一个「待牌扣在对手暗手的比例」特征（infer.mjs），默认写 src/ai/ev-weights-live.mjs
+         --out FILE       fit 时写到这个文件（离线比较用，不改动正式权重）
+         --weights FILE   check 时用这个文件里的权重（导出 EV_WEIGHTS 或 EV_WEIGHTS_LIVE）
    取样同 tools/ev-stats.mjs：每次打牌之后的局面，缺门已打完；结果看这一家从这一刻到本局结束。 */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
 import { replayRecord } from '../src/game/record.mjs';
 import { viewFor } from '../src/game/engine.mjs';
 import { shanten, toCounts, suitOf } from '../src/core/core.mjs';
-import { evContext, tenpaiWaits, pHuFeatures, expectedGain, handValue } from '../src/ai/ev.mjs';
+import { evContext, tenpaiWaits, pHuFeatures, expectedGain, handValue, inHandsShare } from '../src/ai/ev.mjs';
+import { logistic, ols, r4 } from './fit-lib.mjs';
 
 const [mode, ...rest] = process.argv.slice(2);
-const ei = rest.indexOf('--every');
-const every = ei >= 0 ? +rest[ei + 1] : 5;
-const files = rest.filter((x, i) => ei < 0 || (i !== ei && i !== ei + 1));
+const opt = (name, dflt) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : dflt; };
+const every = +opt('--every', 5);
+const live = rest.includes('--live');
+const outFile = opt('--out', null);
+const weightsFile = opt('--weights', null);
+const files = rest.filter((x, i) => !x.startsWith('--') && !['--every', '--out', '--weights'].includes(rest[i - 1]));
+const custom = weightsFile ? Object.values(await import(pathToFileURL(resolve(weightsFile)).href))[0] : null;
+const ctxOf = view => evContext(view, { live, weights: custom || undefined });
 if (!['fit', 'check'].includes(mode) || !files.length) { console.error('用法：node tools/fit-ev.mjs fit|check <牌谱.jsonl> [...]'); process.exit(1); }
 
 function* records() {
@@ -36,7 +47,7 @@ function collect(take) {
         const sh = shanten(toCounts(hand), p.melds.length);
         if (sh > 1) return;
         if (sh === 1 && n1++ % every) return;
-        const s = take(evContext(viewFor(g, seat)), hand, sh);
+        const s = take(ctxOf(viewFor(g, seat)), hand, sh);
         if (s) states[seat].push({ ...s, sh, score: p.score });
       }
     });
@@ -48,54 +59,12 @@ function collect(take) {
   return { out, games };
 }
 
-/* ---------- 小型线性代数 ---------- */
-function solve(A, b) {
-  const n = b.length, M = A.map((r, i) => [...r, b[i]]);
-  for (let i = 0; i < n; i++) {
-    let piv = i;
-    for (let r = i + 1; r < n; r++) if (Math.abs(M[r][i]) > Math.abs(M[piv][i])) piv = r;
-    [M[i], M[piv]] = [M[piv], M[i]];
-    for (let r = 0; r < n; r++) {
-      if (r === i) continue;
-      const f = M[r][i] / M[i][i];
-      for (let c = i; c <= n; c++) M[r][c] -= f * M[i][c];
-    }
-  }
-  return M.map((r, i) => r[n] / r[i]);
-}
-
-function logistic(X, y, iters = 25) {
-  const d = X[0].length;
-  let w = new Array(d).fill(0);
-  for (let it = 0; it < iters; it++) {
-    const H = Array.from({ length: d }, () => new Array(d).fill(0)), gr = new Array(d).fill(0);
-    for (let i = 0; i < X.length; i++) {
-      const x = X[i], p = 1 / (1 + Math.exp(-x.reduce((a, xi, j) => a + xi * w[j], 0)));
-      const s = p * (1 - p);
-      for (let j = 0; j < d; j++) { gr[j] += (y[i] - p) * x[j]; for (let k = 0; k < d; k++) H[j][k] += s * x[j] * x[k]; }
-    }
-    for (let j = 0; j < d; j++) H[j][j] += 1e-6;
-    const step = solve(H, gr);
-    w = w.map((wj, j) => wj + step[j]);
-    if (Math.max(...step.map(Math.abs)) < 1e-8) break;
-  }
-  return w;
-}
-
-function ols(X, y) {
-  const d = X[0].length;
-  const A = Array.from({ length: d }, () => new Array(d).fill(0)), b = new Array(d).fill(0);
-  for (let i = 0; i < X.length; i++) for (let j = 0; j < d; j++) { b[j] += X[i][j] * y[i]; for (let k = 0; k < d; k++) A[j][k] += X[i][j] * X[i][k]; }
-  return solve(A, b);
-}
-
-const r4 = x => Math.round(x * 1e4) / 1e4;
-
 if (mode === 'fit') {
   const { out, games } = collect((ctx, hand, sh) => {
     if (sh !== 0) return null;
-    const waits = tenpaiWaits(ctx, toCounts(hand)).map(w => ({ remain: w.remain, ron: w.ron, zimo: w.zimo }));
-    return { waits, R: waits.reduce((a, w) => a + w.remain, 0), wall: ctx.wall, active: ctx.active };
+    const raw = tenpaiWaits(ctx, toCounts(hand));
+    const waits = raw.map(w => ({ remain: w.remain, ron: w.ron, zimo: w.zimo }));
+    return { waits, R: waits.reduce((a, w) => a + w.remain, 0), wall: ctx.wall, active: ctx.active, inHands: live ? inHandsShare(ctx, raw) : undefined };
   });
   console.log(`牌谱 ${games} 局，听牌样本 ${out.length}`);
   const pz = {};
@@ -103,7 +72,7 @@ if (mode === 'fit') {
     const s = out.filter(x => x.active === a && x.hu);
     pz[a] = r4(s.reduce((acc, x) => acc + x.zimo, 0) / s.length);
   }
-  const X = out.map(s => pHuFeatures(s.R, s.wall, s.active));
+  const X = out.map(s => pHuFeatures(s.R, s.wall, s.active, s.inHands));
   const pHu = logistic(X, out.map(s => s.hu)).map(r4);
   const P = X.map(x => 1 / (1 + Math.exp(-x.reduce((a, xi, j) => a + xi * pHu[j], 0))));
   const G = out.map(s => expectedGain(s.waits, s.active, pz));
@@ -120,10 +89,11 @@ if (mode === 'fit') {
   W.calib1 = { a: a1, c: c1 };
   console.log(`一向听样本 ${one.length}（每 ${every} 个取 1）`);
   console.log(JSON.stringify(W));
-  writeFileSync(new URL('../src/ai/ev-weights.mjs', import.meta.url),
-    `/* 由 tools/fit-ev.mjs 生成，勿手改。训练牌谱：${files.join('、')}（${games} 局，听牌样本 ${out.length}） */\n` +
-    `export const EV_WEIGHTS = ${JSON.stringify(W)};\n`);
-  console.log('已写出 src/ai/ev-weights.mjs');
+  const target = outFile ? resolve(outFile) : new URL(`../src/ai/${live ? 'ev-weights-live' : 'ev-weights'}.mjs`, import.meta.url);
+  writeFileSync(target,
+    `/* 由 tools/fit-ev.mjs 生成${live ? '（--live 读牌版）' : ''}，勿手改。训练牌谱：${files.join('、')}（${games} 局，听牌样本 ${out.length}） */\n` +
+    `export const ${live ? 'EV_WEIGHTS_LIVE' : 'EV_WEIGHTS'} = ${JSON.stringify(W)};\n`);
+  console.log(`已写出 ${target}`);
 } else {
   const t0 = performance.now();
   const { out, games } = collect((ctx, hand) => {
@@ -148,6 +118,8 @@ if (mode === 'fit') {
     console.log(`| ${i + 1} | ${b.length} | ${pct(p)} | ${pct(y)} | ${((p - y) * 100).toFixed(1)} |`);
   });
   console.log(`\n最大偏差 ${(worst * 100).toFixed(1)} 个百分点（验收：≤ 5）`);
+  const ll = -mean(t, x => (x.hu ? Math.log(Math.max(1e-9, x.pHu)) : Math.log(Math.max(1e-9, 1 - x.pHu))));
+  console.log(`和牌率对数损失 ${ll.toFixed(4)}（越小越好）`);
 
   for (const [name, sh] of [['听牌', 0], ['一向听', 1]]) {
     const s = out.filter(x => x.sh === sh);

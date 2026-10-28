@@ -96,7 +96,15 @@ export function serializeAnalysis(a, rules) {
     摸牌次数: o.draws,
     威胁估计: o.threat,
     威胁依据: o.reasons.join('、') || '无',
-    ...(o.suspectSuit !== null && o.suspectSuit !== undefined ? { 疑似清一色: SUIT[o.suspectSuit] } : {})
+    ...(o.suspectSuit !== null && o.suspectSuit !== undefined ? { 疑似清一色: SUIT[o.suspectSuit] } : {}),
+    ...(o.read ? {
+      读牌: {
+        暗手花色比例: Object.fromEntries([0, 1, 2].filter(s => o.read.shares[s] > 0).map(s => [SUIT[s], `${Math.round(o.read.shares[s] * 100)}%`])),
+        清一色概率: `${Math.round(o.read.pQing * 100)}%`,
+        [`点他${SUIT[o.read.top]}牌的预期损失`]: `${o.read.lossTop} 分`,
+        依据: o.read.reasons
+      }
+    } : {})
   }));
   if (a.alerts.length) data.关键提醒 = a.alerts.map(x => x.text);
   return data;
